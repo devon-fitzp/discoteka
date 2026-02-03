@@ -11,23 +11,22 @@ Written in C# and built for Linux first. Windows builds will also be available. 
 
 ---
 
-# WARNINGS
+# WARNING
 
-1. This is an *extremely* early version - most things *do not work* yet, and the program *will probably* crash on you. *I'm working on it.*
-2. This program is being written with AI assistance. For more information, see the section AI Disclosure below.
+This is an *extremely* early version - most things *do not work* yet, and the program *will probably* crash on you. 
 
 ---
 
 ## AI Disclosure
 
-I am building discoteka with heavy reliance on Codex by OpenAI. I'm able to read and write code, but using AI to move much quicker. As an example, the core of discoteka revolves around a SQLite database. Given a reference manual for the .NET SQLite bindings and a quick cheatsheet on SQL, I could implement my database-import routines by hand. 
+**discoteka is built with the assistance of AI tools, primarily OpenAI Codex.**
 
-It would take me about 4 hours to do so. 
+I can read, write, and reason about code independantly, but I use AI to dramatically speed up development. In practice, Codex acts as a translator from plain English to C#, allowing me to iterate much faster while keeping full control over the project's design and behavior.
 
-Alternately, I can define my schema and tell Codex what I want to accomplish, and have exactly the same code I'd end up with, but done in 5 minutes. 
+For example, discoteka's core revolves around a SQLite database. Given the .NET SQLite bindings documentation and a SQL reference guide, I could implement the required import routines entirely by hand. Doing so would take several hours. By instead defining the schema and clearly designing the intended behavior, I can arrive at functionally identical, readable code in minutes.
 
-There is still a human - me - driving the project design: how it needs to look, what it needs to do, and how it's going to do that. I'm using Codex as, effectively, a translator from plain English to C#. I can describe and understand the program flow and structure, but can use AI to iterate quicker and focus on the parts of the program design that actually matter. 
+The key point is that a human - me - is still driving the project: the architecture, the data models, user experience, and technical decisions. AI is used as an acceleration tool, much like IntelliSense, line completion, and linters before. It's not an autonomous author. I review, understand, and integrate all generated code, and I remain responsible for the final result. 
 
-For the record: I'm still largely anti-generative-AI when used in cases of plagiarizing human creative work. AI "art" will never be art. But there are still useful cases and applications of "AI" - largely holdovers from when we still called it "Machine Learning". 
+Allow me to be explicit: I am *strongly* opposed to generative AI when it's used to plagiarize or replace human creative work. AI-generated "art" is not art. That said, there are still legitimate uses for these technologies, what we historically called "machine learning" - automation, analysis, and tooling to help humans work more efficiently and effectively. 
 
-An additional note: I am considering adding AI/LLM/ML features to discoteka. They will be implemented in a meaningful, deliberate way for function *I* actually want, and they will be designed as opt-*IN* so you never have to enable them if you don't want them. 
+Finally: discoteka may include optional AI / ML / LLM-powered features in the future. Any such features will be purposeful - features you'd actually want to use, not just "AI for the sake of AI" - and strictly opt-in. You will never be required to enable AI-backed features nor consent to data training to use discoteka. 
