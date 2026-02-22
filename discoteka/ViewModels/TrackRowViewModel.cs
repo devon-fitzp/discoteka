@@ -5,8 +5,10 @@ public sealed class TrackRowViewModel
     public TrackRowViewModel(
         long trackId,
         string title,
+        string subtitle,
         string artist,
         string album,
+        int? trackNumber,
         string durationText,
         int? durationSeconds,
         string genre,
@@ -17,8 +19,10 @@ public sealed class TrackRowViewModel
     {
         TrackId = trackId;
         Title = title;
+        Subtitle = subtitle;
         Artist = artist;
         Album = album;
+        TrackNumber = trackNumber;
         DurationText = durationText;
         DurationSeconds = durationSeconds;
         Genre = genre;
@@ -30,8 +34,10 @@ public sealed class TrackRowViewModel
 
     public long TrackId { get; }
     public string Title { get; }
+    public string Subtitle { get; }
     public string Artist { get; }
     public string Album { get; }
+    public int? TrackNumber { get; }
     public string DurationText { get; }
     public int? DurationSeconds { get; }
     public string Genre { get; }

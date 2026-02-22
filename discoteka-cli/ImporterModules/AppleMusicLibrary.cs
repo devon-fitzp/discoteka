@@ -53,6 +53,7 @@ public class AppleMusicLibrary : IXmlModule
                 TrackArtist = GetString(trackDict, "Artist"),
                 AlbumTitle = GetString(trackDict, "Album"),
                 AlbumArtist = GetString(trackDict, "Album Artist"),
+                TrackNumber = GetInt(trackDict, "Track Number"),
                 Genre = GetString(trackDict, "Genre"),
                 Duration = GetInt(trackDict, "Total Time"),
                 Plays = GetInt(trackDict, "Play Count")
@@ -98,6 +99,7 @@ INSERT INTO AppleLibrary (
     TrackArtistRaw,
     AlbumTitle,
     AlbumArtist,
+    TrackNumber,
     Genre,
     Duration,
     Plays,
@@ -116,6 +118,7 @@ VALUES (
     $trackArtistRaw,
     $albumTitle,
     $albumArtist,
+    $trackNumber,
     $genre,
     $duration,
     $plays,
@@ -150,6 +153,7 @@ VALUES (
             insertCommand.Parameters.AddWithValue("$trackArtistRaw", (object?)track.TrackArtist ?? DBNull.Value);
             insertCommand.Parameters.AddWithValue("$albumTitle", (object?)track.AlbumTitle ?? DBNull.Value);
             insertCommand.Parameters.AddWithValue("$albumArtist", (object?)track.AlbumArtist ?? DBNull.Value);
+            insertCommand.Parameters.AddWithValue("$trackNumber", (object?)track.TrackNumber ?? DBNull.Value);
             insertCommand.Parameters.AddWithValue("$genre", (object?)track.Genre ?? DBNull.Value);
             insertCommand.Parameters.AddWithValue("$duration", (object?)track.Duration ?? DBNull.Value);
             insertCommand.Parameters.AddWithValue("$plays", (object?)track.Plays ?? DBNull.Value);

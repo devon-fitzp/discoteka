@@ -96,6 +96,16 @@ public partial class MainWindow : Window
         await ViewModel.QueueMatchRescanAsync(result.Value / 100.0);
     }
 
+    private async void OnRebuildIndexClick(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel == null)
+        {
+            return;
+        }
+
+        await ViewModel.QueueRebuildIndexAsync();
+    }
+
     private void OnSortTitleClick(object? sender, RoutedEventArgs e) => ViewModel?.CycleSortByTitle();
     private void OnSortArtistClick(object? sender, RoutedEventArgs e) => ViewModel?.CycleSortByArtist();
     private void OnSortAlbumClick(object? sender, RoutedEventArgs e) => ViewModel?.CycleSortByAlbum();
@@ -114,6 +124,30 @@ public partial class MainWindow : Window
     private void OnFilterAvailableLocallyClick(object? sender, RoutedEventArgs e) => ViewModel?.ShowAvailableLocallyFilter();
     private void OnFilterNoLocalFileClick(object? sender, RoutedEventArgs e) => ViewModel?.ShowNoLocalFileFilter();
 
+    private async void OnArtistAlbumTileClick(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel == null || sender is not Button { DataContext: MainWindowViewModel.AlbumGroupViewModel album })
+        {
+            return;
+        }
+
+        await ViewModel.ToggleArtistAlbumAsync(album);
+    }
+
+    private async void OnArtistAlbumPlayClick(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel == null || sender is not Button { DataContext: MainWindowViewModel.ArtistGroupViewModel artist } || artist.SelectedAlbum == null)
+        {
+            return;
+        }
+
+        var result = await ViewModel.PlayArtistAlbumAsync(artist.SelectedAlbum);
+        if (!result.Started && result.UserError == "No local file!")
+        {
+            await ShowSimpleMessageAsync("No local file!");
+        }
+    }
+
     private async void OnTrackListDoubleTapped(object? sender, TappedEventArgs e)
     {
         if (ViewModel == null || sender is not ListBox listBox)
@@ -125,6 +159,37 @@ public partial class MainWindow : Window
         {
             await ShowSimpleMessageAsync("No local file!");
         }
+    }
+
+    private async void OnTrackGetInfoClick(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel == null || sender is not MenuItem menuItem)
+        {
+            return;
+        }
+
+        var row = menuItem.CommandParameter as TrackRowViewModel
+                  ?? (menuItem.Parent as ContextMenu)?.PlacementTarget?.DataContext as TrackRowViewModel;
+        if (row == null || row.TrackId <= 0)
+        {
+            return;
+        }
+
+        var snapshot = await ViewModel.GetTrackMetadataSnapshotAsync(row.TrackId);
+        if (snapshot == null)
+        {
+            await ShowSimpleMessageAsync("Track metadata not found.");
+            return;
+        }
+
+        var dialogVm = new TrackInfoDialogViewModel(snapshot);
+        var dialog = new TrackInfoDialog(
+            dialogVm,
+            tab => ViewModel.SaveTrackMetadataTabAsync(tab));
+        await dialog.ShowDialog(this);
+
+        // Reload to reflect any edits in the visible library list.
+        await ViewModel.InitializeAsync();
     }
 
     private async void OnPlayPauseClick(object? sender, RoutedEventArgs e)

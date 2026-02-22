@@ -50,8 +50,10 @@ INSERT INTO FileLibrary (
     ArtistRaw,
     Album,
     AlbumArtist,
+    TrackNumber,
     Duration,
     Bitrate,
+    SampleRate,
     FileType,
     Path,
     MusicalKey,
@@ -69,8 +71,10 @@ VALUES (
     $artistRaw,
     $album,
     $albumArtist,
+    $trackNumber,
     $duration,
     $bitrate,
+    $sampleRate,
     $fileType,
     $path,
     $musicalKey,
@@ -114,8 +118,10 @@ VALUES (
                     Artist = tag.Performers.FirstOrDefault(),
                     Album = string.IsNullOrWhiteSpace(tag.Album) ? null : tag.Album,
                     AlbumArtist = tag.AlbumArtists.FirstOrDefault(),
+                    TrackNumber = tag.Track > 0 ? (int)tag.Track : null,
                     Duration = (int)props.Duration.TotalMilliseconds,
                     Bitrate = props.AudioBitrate > 0 ? props.AudioBitrate : null,
+                    SampleRate = props.AudioSampleRate > 0 ? props.AudioSampleRate : null,
                     FileType = Path.GetExtension(filePath).TrimStart('.').ToUpperInvariant(),
                     Path = filePath
                 };
@@ -133,8 +139,10 @@ VALUES (
             insertCommand.Parameters.AddWithValue("$artistRaw", (object?)track.Artist ?? DBNull.Value);
             insertCommand.Parameters.AddWithValue("$album", (object?)track.Album ?? DBNull.Value);
             insertCommand.Parameters.AddWithValue("$albumArtist", (object?)track.AlbumArtist ?? DBNull.Value);
+            insertCommand.Parameters.AddWithValue("$trackNumber", (object?)track.TrackNumber ?? DBNull.Value);
             insertCommand.Parameters.AddWithValue("$duration", (object?)track.Duration ?? DBNull.Value);
             insertCommand.Parameters.AddWithValue("$bitrate", (object?)track.Bitrate ?? DBNull.Value);
+            insertCommand.Parameters.AddWithValue("$sampleRate", (object?)track.SampleRate ?? DBNull.Value);
             insertCommand.Parameters.AddWithValue("$fileType", (object?)track.FileType ?? DBNull.Value);
             insertCommand.Parameters.AddWithValue("$path", (object?)track.Path ?? DBNull.Value);
             insertCommand.Parameters.AddWithValue("$musicalKey", DBNull.Value);

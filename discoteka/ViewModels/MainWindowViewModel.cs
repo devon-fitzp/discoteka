@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Threading;
@@ -62,6 +63,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly List<TrackRowViewModel> _allTracks = new();
     private int _pendingJobs;
     private int _loadVersion;
+    private int _artistIndexLoadVersion;
     private bool _suppressVolumeUpdate;
     private bool _shuffleEnabled;
     private RepeatMode _playerRepeatMode = RepeatMode.Off;
@@ -113,6 +115,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public string Greeting { get; } = "Welcome to discoteka!";
     public ObservableCollection<TrackRowViewModel> Tracks { get; } = new();
+    public ObservableCollection<ArtistGroupViewModel> ArtistGroups { get; } = new();
 
     public string StatusMessage
     {
@@ -196,7 +199,7 @@ public partial class MainWindowViewModel : ViewModelBase
         ? TrackCountText
         : _libraryViewMode switch
         {
-            LibraryViewMode.Artists => "Artist browser (v1 framework in progress)",
+            LibraryViewMode.Artists => ArtistGroups.Count == 1 ? "1 artist" : $"{ArtistGroups.Count} artists",
             LibraryViewMode.Albums => "Album browser (v1 framework in progress)",
             _ => string.Empty
         };
@@ -233,6 +236,12 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         await _importJobs.QueueMatchRescanAsync(minScore, cancellationToken);
         UpdateStatusFromPending("Match rescan queued.");
+    }
+
+    public async Task QueueRebuildIndexAsync(CancellationToken cancellationToken = default)
+    {
+        await _importJobs.QueueRebuildIndexAsync(cancellationToken);
+        UpdateStatusFromPending("Rebuild index queued.");
     }
 
     public async Task InitializeAsync()
@@ -359,6 +368,39 @@ public partial class MainWindowViewModel : ViewModelBase
         _playbackService?.Seek((long)Math.Max(0, seconds * 1000.0));
     }
 
+    public async Task ToggleArtistAlbumAsync(AlbumGroupViewModel? album)
+    {
+        if (album?.Owner == null)
+        {
+            return;
+        }
+
+        await EnsureAlbumTracksLoadedAsync(album);
+        album.Owner.ToggleSelectedAlbum(album);
+    }
+
+    public async Task<(bool Started, string? UserError)> PlayArtistAlbumAsync(AlbumGroupViewModel? album)
+    {
+        if (album == null)
+        {
+            return (false, null);
+        }
+
+        await EnsureAlbumTracksLoadedAsync(album);
+        var started = PlayTrackSequence(album.Tracks, out var userError);
+        return (started, userError);
+    }
+
+    public Task<discoteka_cli.Models.TrackMetadataSnapshot?> GetTrackMetadataSnapshotAsync(long trackId, CancellationToken cancellationToken = default)
+    {
+        return _trackRepository.GetTrackMetadataSnapshotAsync(trackId, cancellationToken);
+    }
+
+    public Task SaveTrackMetadataTabAsync(discoteka_cli.Models.MetadataTabEntry tab, CancellationToken cancellationToken = default)
+    {
+        return _trackRepository.SaveMetadataTabAsync(tab, cancellationToken);
+    }
+
     public void ToggleShuffle()
     {
         if (_playbackService == null)
@@ -482,7 +524,8 @@ public partial class MainWindowViewModel : ViewModelBase
             formats = string.IsNullOrWhiteSpace(ext) ? "-" : ext;
         }
 
-        return new TrackRowViewModel(trackId, title, artist, album, durationText, track.Duration, genre, formats, playsText, plays, track.FilePath);
+        var subtitle = FormatSubtitle(track.DjTags);
+        return new TrackRowViewModel(trackId, title, subtitle, artist, album, track.TrackNumber, durationText, track.Duration, genre, formats, playsText, plays, track.FilePath);
     }
 
     private void CycleSort(SortColumn column)
@@ -547,7 +590,58 @@ public partial class MainWindowViewModel : ViewModelBase
 
         _allTracks.Clear();
         _allTracks.AddRange(filtered);
+        if (IsArtistsView)
+        {
+            _ = LoadArtistIndexAsync();
+        }
         ApplyCurrentSort();
+    }
+
+    private async Task LoadArtistIndexAsync()
+    {
+        var loadVersion = Interlocked.Increment(ref _artistIndexLoadVersion);
+        try
+        {
+            var indexedRows = await _trackRepository.GetIndexedArtistAlbumsAsync(MapSmartFilterToIndexedQuery());
+            var artists = indexedRows
+                .GroupBy(row => (row.ArtistId, row.ArtistName))
+                .OrderBy(group => group.Key.ArtistName, StringComparer.OrdinalIgnoreCase)
+                .Select(group =>
+                {
+                    var artist = new ArtistGroupViewModel(group.Key.ArtistId, group.Key.ArtistName);
+                    foreach (var albumRow in group.OrderBy(a => a.AlbumTitle, StringComparer.OrdinalIgnoreCase))
+                    {
+                        artist.Albums.Add(new AlbumGroupViewModel(
+                            artist,
+                            albumRow.AlbumId,
+                            albumRow.AlbumTitle,
+                            albumRow.AlbumTrackCount));
+                    }
+
+                    return artist;
+                })
+                .ToList();
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (loadVersion != Volatile.Read(ref _artistIndexLoadVersion))
+                {
+                    return;
+                }
+
+                ArtistGroups.Clear();
+                foreach (var artist in artists)
+                {
+                    ArtistGroups.Add(artist);
+                }
+
+                OnPropertyChanged(nameof(LibrarySubtitleText));
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Artists] Failed to load indexed artist view: {ex}");
+        }
     }
 
     private IEnumerable<TrackRowViewModel> ApplyDefaultSort(IEnumerable<TrackRowViewModel> rows)
@@ -602,6 +696,10 @@ public partial class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(LibraryViewTitle));
         OnPropertyChanged(nameof(LibrarySubtitleText));
         UpdateStatusFromPending($"{LibraryViewTitle} view selected.");
+        if (mode == LibraryViewMode.Artists)
+        {
+            _ = LoadArtistIndexAsync();
+        }
     }
 
     private void SetSmartFilter(SmartFilterMode mode)
@@ -616,6 +714,36 @@ public partial class MainWindowViewModel : ViewModelBase
             _ => "All Tracks"
         };
         UpdateStatusFromPending($"Smart filter: {label}.");
+    }
+
+    private bool? MapSmartFilterToIndexedQuery()
+    {
+        return _smartFilterMode switch
+        {
+            SmartFilterMode.AvailableLocally => true,
+            SmartFilterMode.NoLocalFile => false,
+            _ => null
+        };
+    }
+
+    private async Task EnsureAlbumTracksLoadedAsync(AlbumGroupViewModel album)
+    {
+        if (album.IsTracksLoaded)
+        {
+            return;
+        }
+
+        try
+        {
+            var tracks = await _trackRepository.GetIndexedAlbumTracksAsync(album.AlbumId, MapSmartFilterToIndexedQuery());
+            var rows = tracks.Select(MapTrack).ToList();
+            album.SetTracks(rows);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Artists] Failed to load tracks for album {album.AlbumId}: {ex}");
+            album.SetTracks(new List<TrackRowViewModel>());
+        }
     }
 
     private void OnPlaybackStateChanged(PlaybackState state)
@@ -767,6 +895,38 @@ public partial class MainWindowViewModel : ViewModelBase
         return !string.IsNullOrWhiteSpace(path) && File.Exists(path);
     }
 
+    private bool PlayTrackSequence(IEnumerable<TrackRowViewModel> rows, out string? userError)
+    {
+        userError = null;
+        if (_playbackService == null)
+        {
+            userError = "Playback unavailable.";
+            return false;
+        }
+
+        var queue = rows.Select(MapPlaybackTrack).ToList();
+        if (queue.Count == 0)
+        {
+            return false;
+        }
+
+        var startIndex = queue.FindIndex(track => HasLocalFile(track.FilePath));
+        if (startIndex < 0)
+        {
+            userError = "No local file!";
+            return false;
+        }
+
+        _playbackService.SetQueue(queue, startIndex);
+        var started = _playbackService.PlayAtIndex(startIndex);
+        if (!started)
+        {
+            userError = "No local file!";
+        }
+
+        return started;
+    }
+
     private static string FormatTime(long milliseconds)
     {
         if (milliseconds <= 0)
@@ -780,6 +940,107 @@ public partial class MainWindowViewModel : ViewModelBase
             : span.ToString(@"m\:ss");
     }
 
+    private static string FormatSubtitle(string? djTagsJson)
+    {
+        if (string.IsNullOrWhiteSpace(djTagsJson))
+        {
+            return "-";
+        }
+
+        try
+        {
+            var tags = JsonSerializer.Deserialize<string[]>(djTagsJson);
+            if (tags == null || tags.Length == 0)
+            {
+                return "-";
+            }
+
+            var values = tags.Where(tag => !string.IsNullOrWhiteSpace(tag))
+                .Select(tag => tag.Trim())
+                .ToArray();
+            return values.Length == 0 ? "-" : string.Join(", ", values);
+        }
+        catch
+        {
+            return djTagsJson;
+        }
+    }
+
+    public sealed class ArtistGroupViewModel : ViewModelBase
+    {
+        private bool _isExpanded;
+        private AlbumGroupViewModel? _selectedAlbum;
+
+        public ArtistGroupViewModel(long artistId, string name)
+        {
+            ArtistId = artistId;
+            Name = name;
+        }
+
+        public long ArtistId { get; }
+        public string Name { get; }
+        public ObservableCollection<AlbumGroupViewModel> Albums { get; } = new();
+
+        public bool IsExpanded
+        {
+            get => _isExpanded;
+            set => SetProperty(ref _isExpanded, value);
+        }
+
+        public AlbumGroupViewModel? SelectedAlbum
+        {
+            get => _selectedAlbum;
+            private set
+            {
+                if (SetProperty(ref _selectedAlbum, value))
+                {
+                    OnPropertyChanged(nameof(HasSelectedAlbum));
+                }
+            }
+        }
+
+        public bool HasSelectedAlbum => SelectedAlbum != null;
+
+        public void ToggleSelectedAlbum(AlbumGroupViewModel album)
+        {
+            IsExpanded = true;
+            SelectedAlbum = ReferenceEquals(SelectedAlbum, album) ? null : album;
+        }
+    }
+
+    public sealed class AlbumGroupViewModel : ViewModelBase
+    {
+        private int _trackCount;
+
+        public AlbumGroupViewModel(ArtistGroupViewModel owner, long albumId, string title, int trackCount)
+        {
+            Owner = owner;
+            AlbumId = albumId;
+            Title = title;
+            _trackCount = trackCount;
+        }
+
+        public ArtistGroupViewModel Owner { get; }
+        public long AlbumId { get; }
+        public string Title { get; }
+        public List<TrackRowViewModel> Tracks { get; } = new();
+        public int TrackCount
+        {
+            get => _trackCount;
+            private set => SetProperty(ref _trackCount, value);
+        }
+        public bool IsTracksLoaded { get; private set; }
+
+        public void SetTracks(List<TrackRowViewModel> tracks)
+        {
+            Tracks.Clear();
+            Tracks.AddRange(tracks);
+            TrackCount = Tracks.Count;
+            IsTracksLoaded = true;
+            OnPropertyChanged(nameof(Tracks));
+        }
+    }
+
     private sealed class NoOpLibraryImportJobs : ILibraryImportJobs
     {
         public ValueTask QueueAppleMusicImportAsync(string xmlPath, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
@@ -791,5 +1052,7 @@ public partial class MainWindowViewModel : ViewModelBase
         public ValueTask QueueMatchRescanAsync(double minScore, CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
 
         public ValueTask QueueNormalizeAndMatchAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
+
+        public ValueTask QueueRebuildIndexAsync(CancellationToken cancellationToken = default) => ValueTask.CompletedTask;
     }
 }

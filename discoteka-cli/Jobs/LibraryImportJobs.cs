@@ -11,6 +11,7 @@ public interface ILibraryImportJobs
     ValueTask QueueCleanupAsync(double minConfidence, CancellationToken cancellationToken = default);
     ValueTask QueueMatchRescanAsync(double minScore, CancellationToken cancellationToken = default);
     ValueTask QueueNormalizeAndMatchAsync(CancellationToken cancellationToken = default);
+    ValueTask QueueRebuildIndexAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed class LibraryImportJobs : ILibraryImportJobs
@@ -64,6 +65,12 @@ public sealed class LibraryImportJobs : ILibraryImportJobs
         return _queue.EnqueueAsync(normalizeJob, cancellationToken);
     }
 
+    public ValueTask QueueRebuildIndexAsync(CancellationToken cancellationToken = default)
+    {
+        var job = BuildRebuildIndexJob();
+        return _queue.EnqueueAsync(job, cancellationToken);
+    }
+
     public ValueTask QueueCleanupAsync(double minConfidence, CancellationToken cancellationToken = default)
     {
         var job = new BackgroundJob(
@@ -75,6 +82,7 @@ public sealed class LibraryImportJobs : ILibraryImportJobs
                 DatabaseInitializer.Initialize(_dbPath);
                 var confidence = Math.Clamp(minConfidence, 0.0, 1.0);
                 LibraryCleaner.Run(confidence, dryRun: false, dbPath: _dbPath);
+                TrackLibraryIndexBuilder.Rebuild(_dbPath);
                 await Task.CompletedTask;
             });
 
@@ -92,6 +100,7 @@ public sealed class LibraryImportJobs : ILibraryImportJobs
                 DatabaseInitializer.Initialize(_dbPath);
                 var score = Math.Clamp(minScore, 0.0, 1.0);
                 MatchEngine.Run(dryRun: false, dbPath: _dbPath, minAutoScore: score);
+                TrackLibraryIndexBuilder.Rebuild(_dbPath);
                 await Task.CompletedTask;
             });
 
@@ -115,6 +124,20 @@ public sealed class LibraryImportJobs : ILibraryImportJobs
                 DatabaseInitializer.Initialize(_dbPath);
                 LibraryCleaner.Run(minConfidence: 0.45, dryRun: false, dbPath: _dbPath);
                 MatchEngine.Run(dryRun: false, dbPath: _dbPath, minAutoScore: 0.92);
+                TrackLibraryIndexBuilder.Rebuild(_dbPath);
+                await Task.CompletedTask;
+            });
+    }
+
+    private BackgroundJob BuildRebuildIndexJob()
+    {
+        return new BackgroundJob(
+            Guid.NewGuid(),
+            "Rebuild Artist/Album Index",
+            async token =>
+            {
+                token.ThrowIfCancellationRequested();
+                TrackLibraryIndexBuilder.Rebuild(_dbPath);
                 await Task.CompletedTask;
             });
     }

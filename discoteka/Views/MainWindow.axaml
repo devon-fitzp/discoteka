@@ -55,6 +55,7 @@
                         <MenuFlyout>
                             <MenuItem Header="Run Cleanup..." Click="OnRunCleanupClick"/>
                             <MenuItem Header="Match Rescan..." Click="OnRunMatchRescanClick"/>
+                            <MenuItem Header="Rebuild Index" Click="OnRebuildIndexClick"/>
                         </MenuFlyout>
                     </Button.Flyout>
                 </Button>
@@ -106,38 +107,106 @@
             </StackPanel>
 
             <Border Grid.Row="1" IsVisible="{Binding IsAllMusicView}" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource PanelBorder}" BorderThickness="0,1,0,1" Padding="10,8" Margin="0,12,0,0">
-                <Grid ColumnDefinitions="3*,2*,2*,*,1.5*,*,*" >
+                <Grid ColumnDefinitions="2.6*,1.8*,2*,2*,*,1.5*,*,*" >
                     <Button Content="TITLE" Click="OnSortTitleClick" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Padding="0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextMuted}"/>
-                    <Button Grid.Column="1" Content="ARTIST" Click="OnSortArtistClick" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Padding="0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextMuted}"/>
-                    <Button Grid.Column="2" Content="ALBUM" Click="OnSortAlbumClick" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Padding="0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextMuted}"/>
-                    <Button Grid.Column="3" Content="TIME" Click="OnSortTimeClick" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Padding="0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextMuted}"/>
-                    <Button Grid.Column="4" Content="GENRE" Click="OnSortGenreClick" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Padding="0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextMuted}"/>
-                    <Button Grid.Column="5" Content="FORMATS" Click="OnSortFormatsClick" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Padding="0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextMuted}"/>
-                    <Button Grid.Column="6" Content="PLAYS" Click="OnSortPlaysClick" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Padding="0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextMuted}"/>
+                    <TextBlock Grid.Column="1" Text="REMIX" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold"/>
+                    <Button Grid.Column="2" Content="ARTIST" Click="OnSortArtistClick" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Padding="0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextMuted}"/>
+                    <Button Grid.Column="3" Content="ALBUM" Click="OnSortAlbumClick" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Padding="0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextMuted}"/>
+                    <Button Grid.Column="4" Content="TIME" Click="OnSortTimeClick" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Padding="0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextMuted}"/>
+                    <Button Grid.Column="5" Content="GENRE" Click="OnSortGenreClick" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Padding="0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextMuted}"/>
+                    <Button Grid.Column="6" Content="FORMATS" Click="OnSortFormatsClick" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Padding="0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextMuted}"/>
+                    <Button Grid.Column="7" Content="PLAYS" Click="OnSortPlaysClick" HorizontalAlignment="Left" Background="Transparent" BorderThickness="0" Padding="0" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource TextMuted}"/>
                 </Grid>
             </Border>
 
             <ListBox x:Name="TrackList" Grid.Row="2" IsVisible="{Binding IsAllMusicView}" Background="Transparent" BorderThickness="0" Margin="0,0,0,10" ItemsSource="{Binding Tracks}" DoubleTapped="OnTrackListDoubleTapped">
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <Grid ColumnDefinitions="3*,2*,2*,*,1.5*,*,*" Margin="0,6">
+                        <Grid ColumnDefinitions="2.6*,1.8*,2*,2*,*,1.5*,*,*" Margin="0,6">
+                            <Grid.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Get Info" Click="OnTrackGetInfoClick" CommandParameter="{Binding}"/>
+                                </ContextMenu>
+                            </Grid.ContextMenu>
                             <TextBlock Text="{Binding Title}" Foreground="{DynamicResource TextPrimary}"/>
-                            <TextBlock Grid.Column="1" Text="{Binding Artist}" Foreground="{DynamicResource TextMuted}"/>
-                            <TextBlock Grid.Column="2" Text="{Binding Album}" Foreground="{DynamicResource TextMuted}"/>
-                            <TextBlock Grid.Column="3" Text="{Binding DurationText}" Foreground="{DynamicResource TextMuted}"/>
-                            <TextBlock Grid.Column="4" Text="{Binding Genre}" Foreground="{DynamicResource TextMuted}"/>
-                            <TextBlock Grid.Column="5" Text="{Binding Formats}" Foreground="{DynamicResource TextMuted}"/>
-                            <TextBlock Grid.Column="6" Text="{Binding PlaysText}" Foreground="{DynamicResource TextMuted}"/>
+                            <TextBlock Grid.Column="1" Text="{Binding Subtitle}" Foreground="{DynamicResource TextMuted}"/>
+                            <TextBlock Grid.Column="2" Text="{Binding Artist}" Foreground="{DynamicResource TextMuted}"/>
+                            <TextBlock Grid.Column="3" Text="{Binding Album}" Foreground="{DynamicResource TextMuted}"/>
+                            <TextBlock Grid.Column="4" Text="{Binding DurationText}" Foreground="{DynamicResource TextMuted}"/>
+                            <TextBlock Grid.Column="5" Text="{Binding Genre}" Foreground="{DynamicResource TextMuted}"/>
+                            <TextBlock Grid.Column="6" Text="{Binding Formats}" Foreground="{DynamicResource TextMuted}"/>
+                            <TextBlock Grid.Column="7" Text="{Binding PlaysText}" Foreground="{DynamicResource TextMuted}"/>
                         </Grid>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
 
-            <Border Grid.Row="2" IsVisible="{Binding IsArtistsView}" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource PanelBorder}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,10">
-                <StackPanel Spacing="8">
-                    <TextBlock Text="Artists view framework is ready." Foreground="{DynamicResource TextPrimary}" FontSize="15" FontWeight="SemiBold"/>
-                    <TextBlock Text="Next stage: expandable artist rows with album strips and track panes." Foreground="{DynamicResource TextMuted}" TextWrapping="Wrap"/>
-                </StackPanel>
+            <Border Grid.Row="2" IsVisible="{Binding IsArtistsView}" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource PanelBorder}" BorderThickness="1" CornerRadius="8" Padding="10" Margin="0,0,0,10">
+                <ScrollViewer>
+                    <ItemsControl ItemsSource="{Binding ArtistGroups}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Expander IsExpanded="{Binding IsExpanded}" Margin="0,0,0,8">
+                                    <Expander.Header>
+                                        <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+                                            <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextPrimary}" FontSize="13" FontWeight="SemiBold"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding Albums.Count, StringFormat='{}{0} albums'}" Foreground="{DynamicResource TextMuted}" FontSize="11"/>
+                                        </Grid>
+                                    </Expander.Header>
+
+                                    <StackPanel Spacing="10" Margin="2,8,2,2">
+                                        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                                            <ItemsControl ItemsSource="{Binding Albums}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Horizontal" Spacing="10"/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Button Click="OnArtistAlbumTileClick" Padding="0" Background="Transparent" BorderThickness="0">
+                                                            <StackPanel Width="120" Spacing="6">
+                                                                <Border Height="120" Background="{DynamicResource PanelBgAlt}" BorderBrush="{DynamicResource PanelBorder}" BorderThickness="1" CornerRadius="8"/>
+                                                                <TextBlock Text="{Binding Title}" Foreground="{DynamicResource TextPrimary}" TextWrapping="Wrap" MaxHeight="34"/>
+                                                                <TextBlock Text="{Binding TrackCount, StringFormat='{}{0} tracks'}" Foreground="{DynamicResource TextMuted}" FontSize="11"/>
+                                                            </StackPanel>
+                                                        </Button>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </ScrollViewer>
+
+                                        <Border IsVisible="{Binding HasSelectedAlbum}" Background="{DynamicResource PanelBgAlt}" BorderBrush="{DynamicResource PanelBorder}" BorderThickness="1" CornerRadius="8" Padding="10">
+                                            <StackPanel Spacing="8">
+                                                <Grid ColumnDefinitions="*,Auto">
+                                                    <StackPanel Spacing="2">
+                                                        <TextBlock Text="{Binding SelectedAlbum.Title}" Foreground="{DynamicResource TextPrimary}" FontSize="14" FontWeight="SemiBold"/>
+                                                        <TextBlock Text="{Binding SelectedAlbum.TrackCount, StringFormat='{}{0} tracks'}" Foreground="{DynamicResource TextMuted}" FontSize="11"/>
+                                                    </StackPanel>
+                                                    <Button Grid.Column="1" Content="Play Album" Click="OnArtistAlbumPlayClick" Padding="10,4" HorizontalAlignment="Right"/>
+                                                </Grid>
+
+                                                <ItemsControl ItemsSource="{Binding SelectedAlbum.Tracks}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Grid ColumnDefinitions="Auto,2.4*,1.7*,1.8*,Auto" Margin="0,3">
+                                                                <TextBlock Text="{Binding TrackNumber, StringFormat='{}{0:00}'}" Foreground="{DynamicResource TextMuted}" Width="28"/>
+                                                                <TextBlock Grid.Column="1" Text="{Binding Title}" Foreground="{DynamicResource TextPrimary}"/>
+                                                                <TextBlock Grid.Column="2" Text="{Binding Subtitle}" Foreground="{DynamicResource TextMuted}"/>
+                                                                <TextBlock Grid.Column="3" Text="{Binding Artist}" Foreground="{DynamicResource TextMuted}"/>
+                                                                <TextBlock Grid.Column="4" Text="{Binding DurationText}" Foreground="{DynamicResource TextMuted}" Margin="10,0,0,0"/>
+                                                            </Grid>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </Expander>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
             </Border>
 
             <Border Grid.Row="2" IsVisible="{Binding IsAlbumsView}" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource PanelBorder}" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,10">

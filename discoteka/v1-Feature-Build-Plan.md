@@ -225,6 +225,10 @@ Out-of-scope for v1:
   - Transport/seek pane: center zone.
   - Volume pane: right zone.
 - Prevent now-playing pane width from changing with title length.
+- Make the main content header (currently "All Music") reflect the active context:
+  - library view (`All Music`, `Artists`, `Albums`)
+  - active smart filter (`Available Locally`, `No Local File`, etc.)
+  - playlist name when browsing a playlist
 
 ### Now Playing pane requirements
 - Show metadata on three lines:

@@ -1,0 +1,64 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:discoteka.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        x:Class="discoteka.Views.TrackInfoDialog"
+        x:DataType="vm:TrackInfoDialogViewModel"
+        mc:Ignorable="d"
+        Width="900"
+        Height="680"
+        MinWidth="760"
+        MinHeight="520"
+        WindowStartupLocation="CenterOwner"
+        Title="Track Info">
+    <Grid RowDefinitions="Auto,*,Auto" Margin="14">
+        <StackPanel Spacing="4">
+            <TextBlock Text="{Binding TrackId, StringFormat='Track #{0}'}" FontSize="16" FontWeight="SemiBold"/>
+            <TextBlock Text="Editable metadata across TrackLibrary, source libraries, and local file rows." Opacity="0.75"/>
+        </StackPanel>
+
+        <TabControl Grid.Row="1" Margin="0,12,0,12" SelectedItem="{Binding SelectedTab}" ItemsSource="{Binding Tabs}">
+            <TabControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:TrackInfoTabViewModel">
+                    <TextBlock Text="{Binding Title}"/>
+                </DataTemplate>
+            </TabControl.ItemTemplate>
+
+            <TabControl.ContentTemplate>
+                <DataTemplate x:DataType="vm:TrackInfoTabViewModel">
+                    <Border BorderThickness="1" CornerRadius="8" Padding="10">
+                        <Grid RowDefinitions="Auto,*" ColumnDefinitions="*,Auto,Auto">
+                            <TextBlock Text="{Binding TableName}" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Column="1" Text="{Binding KeyColumn}" Margin="8,0,6,0" Opacity="0.75"/>
+                            <TextBlock Grid.Column="2" Text="{Binding KeyValue}" Opacity="0.75"/>
+
+                            <ScrollViewer Grid.Row="1" Grid.ColumnSpan="3" Margin="0,10,0,0">
+                                <ItemsControl ItemsSource="{Binding Fields}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:TrackInfoFieldViewModel">
+                                            <Grid ColumnDefinitions="220,110,*" Margin="0,0,0,6">
+                                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding DeclaredType}" Opacity="0.65" VerticalAlignment="Center"/>
+                                                <TextBox Grid.Column="2"
+                                                         Text="{Binding Value}"
+                                                         IsReadOnly="{Binding IsPrimaryKey}"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </TabControl.ContentTemplate>
+        </TabControl>
+
+        <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto,Auto" VerticalAlignment="Center">
+            <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" Opacity="0.8"/>
+            <Button Grid.Column="1" Content="Save Current" Click="OnSaveCurrentClick" Padding="12,6" Margin="8,0,0,0"/>
+            <Button Grid.Column="2" Content="Save All" Click="OnSaveAllClick" Padding="12,6" Margin="8,0,0,0"/>
+            <Button Grid.Column="3" Content="Close" Click="OnCloseClick" Padding="12,6" Margin="8,0,0,0"/>
+        </Grid>
+    </Grid>
+</Window>
