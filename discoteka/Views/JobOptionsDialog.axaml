@@ -1,0 +1,24 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="discoteka.Views.JobOptionsDialog"
+        Width="360"
+        Height="200"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        Title="Job Options">
+    <Grid RowDefinitions="Auto,Auto,Auto" Margin="16">
+        <TextBlock x:Name="HeaderText" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,6"/>
+        <StackPanel Grid.Row="1" Spacing="6">
+            <TextBlock x:Name="LabelText" FontSize="12" Opacity="0.75"/>
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <Slider x:Name="ValueSlider" Minimum="50" Maximum="99" Value="75" Width="220"/>
+                <TextBlock x:Name="ValueText" Width="60" HorizontalAlignment="Right" VerticalAlignment="Center" FontWeight="SemiBold"/>
+            </StackPanel>
+        </StackPanel>
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,14,0,0">
+            <Button Content="Cancel" Click="OnCancelClick" Padding="12,6"/>
+            <Button Content="Run" Click="OnRunClick" Padding="12,6"/>
+        </StackPanel>
+    </Grid>
+</Window>
+ 
