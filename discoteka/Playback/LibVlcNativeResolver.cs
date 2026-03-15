@@ -9,10 +9,32 @@ using LibVLCSharp.Shared;
 
 namespace discoteka.Playback;
 
+/// <summary>
+/// Registers a custom <see cref="NativeLibrary"/> import resolver for libvlc and libvlccore
+/// on Linux, where the NuGet package does not bundle native binaries.
+/// <para>
+/// Resolution order:
+/// <list type="number">
+///   <item>Directories listed in <c>LD_LIBRARY_PATH</c>.</item>
+///   <item>Standard system library directories: <c>/usr/lib/x86_64-linux-gnu</c>, <c>/usr/lib64</c>,
+///         <c>/usr/lib</c>, <c>/lib/x86_64-linux-gnu</c>, <c>/lib64</c>, <c>/lib</c>, <c>/usr/local/lib</c>.</item>
+///   <item>System-default DLL search (via <see cref="NativeLibrary.TryLoad(string, out IntPtr)"/>).</item>
+/// </list>
+/// Falls back to <see cref="IntPtr.Zero"/> if no candidate succeeds, letting VLC emit its own error.
+/// </para>
+/// <para>
+/// Registration is one-shot: subsequent calls to <see cref="Register"/> are no-ops, ensured by
+/// an <see cref="Interlocked.Exchange"/> flag.
+/// </para>
+/// </summary>
 internal static class LibVlcNativeResolver
 {
     private static int _registered;
 
+    /// <summary>
+    /// Registers the custom resolver. Safe to call multiple times — only the first call has effect.
+    /// On non-Linux platforms this is a no-op.
+    /// </summary>
     public static void Register()
     {
         if (!OperatingSystem.IsLinux())
@@ -28,6 +50,7 @@ internal static class LibVlcNativeResolver
         NativeLibrary.SetDllImportResolver(typeof(LibVLC).Assembly, Resolve);
     }
 
+    /// <summary>Returns a human-readable hint for users whose libVLC installation is missing.</summary>
     public static string BuildLinuxDependencyHint()
     {
         return "Install system VLC libs (e.g. libvlc5, libvlccore9, vlc-plugin-base, libvlc-dev), then relaunch.";
@@ -46,6 +69,7 @@ internal static class LibVlcNativeResolver
             return IntPtr.Zero;
         }
 
+        // Try versioned filenames first (more specific), then unversioned fallbacks
         var candidateFileNames = libraryName.Equals("libvlc", StringComparison.Ordinal)
             ? new[] { "libvlc.so.5", "libvlc.so", "libvlc" }
             : new[] { "libvlccore.so.9", "libvlccore.so", "libvlccore" };
@@ -58,9 +82,11 @@ internal static class LibVlcNativeResolver
             }
             catch
             {
+                // This path didn't work — try the next candidate.
             }
         }
 
+        // Final fallback: let the runtime search LD_LIBRARY_PATH and system defaults by filename alone
         foreach (var fileName in candidateFileNames)
         {
             if (NativeLibrary.TryLoad(fileName, out var handle))
@@ -72,6 +98,10 @@ internal static class LibVlcNativeResolver
         return IntPtr.Zero;
     }
 
+    /// <summary>
+    /// Yields fully-qualified candidate paths by combining each known library directory
+    /// with each candidate file name. Directories that do not exist are skipped.
+    /// </summary>
     private static IEnumerable<string> EnumerateCandidatePaths(IEnumerable<string> fileNames)
     {
         var directories = new List<string>();

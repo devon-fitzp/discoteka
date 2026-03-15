@@ -2,10 +2,31 @@ using Microsoft.Data.Sqlite;
 
 namespace discoteka_cli.Database;
 
+/// <summary>
+/// Creates and migrates the discoteka SQLite schema on first run and after updates.
+/// <para>
+/// Schema changes are always additive: new columns are added via <see cref="EnsureColumnExists"/>,
+/// which silently no-ops if the column already exists. Tables and indices are created with
+/// <c>IF NOT EXISTS</c> guards, so this can be called safely on every startup.
+/// </para>
+/// </summary>
 public static class DatabaseInitializer
 {
+    /// <summary>
+    /// Monotonically increasing integer written into <c>discotekaMeta.DbVer</c> on first run.
+    /// Not yet used for conditional migrations — reserved for future schema versioning.
+    /// </summary>
     public const int CurrentDbVersion = 1;
 
+    /// <summary>
+    /// Ensures the database file exists, creates all tables and indices, runs any pending
+    /// additive column migrations, and returns the resolved absolute path to the DB file.
+    /// </summary>
+    /// <param name="dbPath">
+    /// Optional override for the database path.
+    /// Defaults to <see cref="DbPaths.GetDefaultDbPath"/>.
+    /// </param>
+    /// <returns>The absolute path to the database file that was initialized.</returns>
     public static string Initialize(string? dbPath = null)
     {
         var path = dbPath ?? DbPaths.GetDefaultDbPath();
@@ -111,6 +132,7 @@ CREATE TABLE IF NOT EXISTS FileLibrary (
     CleanLog TEXT
 );
 
+-- M:M join tables linking canonical TrackLibrary rows to source records
 CREATE TABLE IF NOT EXISTS TrackToFile (
     TrackId INTEGER,
     FileId INTEGER,
@@ -138,6 +160,7 @@ CREATE TABLE IF NOT EXISTS TrackToRekordbox (
     FOREIGN KEY (RekordboxId) REFERENCES Rekordbox(TrackId)
 );
 
+-- Playback history; a row is inserted whenever a track crosses 50% of its duration
 CREATE TABLE IF NOT EXISTS RecentActivity (
     ActivityId INTEGER PRIMARY KEY AUTOINCREMENT,
     TrackId INTEGER NOT NULL,
@@ -145,6 +168,8 @@ CREATE TABLE IF NOT EXISTS RecentActivity (
     FOREIGN KEY (TrackId) REFERENCES TrackLibrary(TrackId)
 );
 
+-- Pre-built artist/album index tables, populated by TrackLibraryIndexBuilder.Rebuild().
+-- These are wiped and rebuilt from scratch on each import or match pass.
 CREATE TABLE IF NOT EXISTS TrackArtists (
     ArtistId INTEGER PRIMARY KEY AUTOINCREMENT,
     ArtistName TEXT NOT NULL,
@@ -197,6 +222,8 @@ CREATE INDEX IF NOT EXISTS IX_RecentActivity_TrackId_PlayedAtUtc ON RecentActivi
             command.Parameters.Clear();
         }
 
+        // Additive column migrations: columns added after the initial schema release.
+        // EnsureColumnExists is a no-op if the column already exists.
         EnsureColumnExists(command, "TrackLibrary", "TrackNumber", "INTEGER");
         EnsureColumnExists(command, "AppleLibrary", "TrackNumber", "INTEGER");
         EnsureColumnExists(command, "Rekordbox", "TrackNumber", "INTEGER");
@@ -227,6 +254,16 @@ CREATE INDEX IF NOT EXISTS IX_AlbumToTrack_TrackId ON AlbumToTrack(TrackId);";
         return path;
     }
 
+    /// <summary>
+    /// Issues <c>ALTER TABLE … ADD COLUMN</c> and silently swallows the
+    /// <c>duplicate column name</c> error if the column already exists.
+    /// This is the only safe way to add columns to an existing SQLite table without
+    /// a full schema migration.
+    /// <para>
+    /// Note: all three parameters are hardcoded at every call site — they are never
+    /// derived from user input — so interpolating them directly into DDL is safe here.
+    /// </para>
+    /// </summary>
     private static void EnsureColumnExists(SqliteCommand command, string tableName, string columnName, string columnType)
     {
         try
@@ -238,6 +275,7 @@ CREATE INDEX IF NOT EXISTS IX_AlbumToTrack_TrackId ON AlbumToTrack(TrackId);";
         }
         catch (SqliteException ex) when (ex.Message.Contains("duplicate column name", StringComparison.OrdinalIgnoreCase))
         {
+            // Column already exists — nothing to do.
         }
     }
 }

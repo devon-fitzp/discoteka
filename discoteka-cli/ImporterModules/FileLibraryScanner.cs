@@ -5,6 +5,16 @@ using TagLib;
 
 namespace discoteka_cli.ImporterModules;
 
+/// <summary>
+/// Scans a directory tree for audio files and imports their tag metadata
+/// into the <c>FileLibrary</c> table via TagLibSharp.
+/// <para>
+/// Supported file types: .mp3, .m4a, .flac, .wav, .m4p.
+/// macOS resource fork files (names starting with <c>._</c>) are silently skipped.
+/// Files that TagLibSharp cannot parse are also silently skipped — this is intentional
+/// to handle corrupted or partially-written files without aborting a large scan.
+/// </para>
+/// </summary>
 public class FileLibraryScanner
 {
     private static readonly HashSet<string> SupportedExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -16,6 +26,15 @@ public class FileLibraryScanner
         ".m4p"
     };
 
+    /// <summary>
+    /// Enumerates all supported audio files under <paramref name="rootPath"/>,
+    /// reads their tags, and inserts any new entries into <c>FileLibrary</c>.
+    /// Existing rows (matched by file path) are skipped.
+    /// </summary>
+    /// <param name="rootPath">Root directory to scan recursively.</param>
+    /// <param name="dbPath">Optional database path override.</param>
+    /// <returns>Number of new rows inserted.</returns>
+    /// <exception cref="DirectoryNotFoundException">Thrown if <paramref name="rootPath"/> does not exist.</exception>
     public int ScanAndImport(string rootPath, string? dbPath = null)
     {
         if (!Directory.Exists(rootPath))
@@ -85,6 +104,8 @@ VALUES (
     $cleanLog
 );";
 
+        // Compute the next FileId manually rather than relying on AUTOINCREMENT,
+        // so we can reference the ID within the same transaction if needed later.
         using var maxIdCommand = connection.CreateCommand();
         maxIdCommand.Transaction = transaction;
         maxIdCommand.CommandText = "SELECT COALESCE(MAX(FileId), 0) FROM FileLibrary;";
@@ -128,6 +149,8 @@ VALUES (
             }
             catch
             {
+                // TagLibSharp throws for unsupported/corrupted files — skip silently.
+                // TODO: accumulate failed paths and surface them in the job result.
                 continue;
             }
 
@@ -160,6 +183,10 @@ VALUES (
         return inserted;
     }
 
+    /// <summary>
+    /// Recursively enumerates all files whose extension is in <see cref="SupportedExtensions"/>,
+    /// excluding macOS resource fork files (names starting with <c>._</c>).
+    /// </summary>
     private static IEnumerable<string> EnumerateAudioFiles(string rootPath)
     {
         return Directory.EnumerateFiles(rootPath, "*.*", SearchOption.AllDirectories)

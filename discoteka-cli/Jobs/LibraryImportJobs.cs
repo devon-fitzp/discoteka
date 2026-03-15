@@ -4,16 +4,59 @@ using discoteka_cli.Utils;
 
 namespace discoteka_cli.Jobs;
 
+/// <summary>
+/// Factory and coordinator for all library-related background jobs.
+/// Every method enqueues work into the shared <see cref="IBackgroundJobQueue"/>
+/// without blocking the caller.
+/// </summary>
 public interface ILibraryImportJobs
 {
+    /// <summary>Imports an Apple Music or iTunes XML file into <c>AppleLibrary</c>.</summary>
     ValueTask QueueAppleMusicImportAsync(string xmlPath, CancellationToken cancellationToken = default);
+
+    /// <summary>Recursively scans <paramref name="rootPath"/> for audio files and imports them into <c>FileLibrary</c>.</summary>
     ValueTask QueueMediaScanAsync(string rootPath, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Runs LibraryCleaner and MatchEngine with the given thresholds.
+    /// Clamp <paramref name="minConfidence"/> to [0, 1] before passing.
+    /// </summary>
     ValueTask QueueCleanupAsync(double minConfidence, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Re-runs MatchEngine with the given minimum auto-match score.
+    /// Useful after manual library edits.
+    /// </summary>
     ValueTask QueueMatchRescanAsync(double minScore, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Runs the standard post-import pipeline: LibraryCleaner (confidence ≥ 0.45)
+    /// → MatchEngine (auto-score ≥ 0.92) → RebuildIndex.
+    /// </summary>
     ValueTask QueueNormalizeAndMatchAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Rebuilds <c>TrackArtists</c>, <c>TrackAlbums</c>, <c>ArtistToAlbum</c>, and <c>AlbumToTrack</c>
+    /// from the current state of <c>TrackLibrary</c>.
+    /// </summary>
     ValueTask QueueRebuildIndexAsync(CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// <see cref="ILibraryImportJobs"/> implementation.
+/// <para>
+/// Import and scan jobs automatically chain a "Normalize + Match" job afterward,
+/// so the library is always in a consistent matched/indexed state after any data ingestion.
+/// </para>
+/// <para>
+/// Hard-coded pipeline thresholds:
+/// <list type="bullet">
+///   <item>LibraryCleaner minimum confidence: <c>0.45</c></item>
+///   <item>MatchEngine minimum auto-match score: <c>0.92</c></item>
+/// </list>
+/// These were tuned empirically; adjust in <see cref="BuildNormalizeAndMatchJob"/> if needed.
+/// </para>
+/// </summary>
 public sealed class LibraryImportJobs : ILibraryImportJobs
 {
     private readonly IBackgroundJobQueue _queue;
@@ -107,6 +150,7 @@ public sealed class LibraryImportJobs : ILibraryImportJobs
         return _queue.EnqueueAsync(job, cancellationToken);
     }
 
+    /// <summary>Enqueues <paramref name="firstJob"/> and then immediately queues a Normalize+Match job behind it.</summary>
     private async ValueTask EnqueueWithNormalizeAndMatchAsync(BackgroundJob firstJob, CancellationToken cancellationToken)
     {
         await _queue.EnqueueAsync(firstJob, cancellationToken);

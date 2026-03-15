@@ -2,8 +2,25 @@ using Microsoft.Data.Sqlite;
 
 namespace discoteka_cli.Database;
 
+/// <summary>
+/// Rebuilds the pre-computed artist/album index tables from the current state of
+/// <c>TrackLibrary</c>. Called automatically after every import, scan, or match pass.
+/// <para>
+/// The four index tables (<c>TrackArtists</c>, <c>TrackAlbums</c>, <c>ArtistToAlbum</c>,
+/// <c>AlbumToTrack</c>) are wiped and repopulated within a single transaction, so the
+/// index is never in a partially-built state.
+/// </para>
+/// <para>
+/// Artist and album identity is determined by a normalized key (lowercased, whitespace-collapsed)
+/// so that "The Beatles" and "the beatles" map to the same artist row.
+/// </para>
+/// </summary>
 public static class TrackLibraryIndexBuilder
 {
+    /// <summary>
+    /// Drops all index rows and rebuilds them from <c>TrackLibrary</c>.
+    /// This is a full rebuild — incremental updates are not supported.
+    /// </summary>
     public static void Rebuild(string? dbPath = null)
     {
         var resolvedDbPath = DatabaseInitializer.Initialize(dbPath);
@@ -215,6 +232,10 @@ VALUES ($albumId, $trackId, $sortOrder, $trackNumber);";
         command.ExecuteNonQuery();
     }
 
+    /// <summary>
+    /// Produces a normalized lookup key from a name string: lowercased, whitespace-collapsed.
+    /// Used to group artist and album variants that differ only in case or spacing.
+    /// </summary>
     private static string NormalizeKey(string? value)
     {
         return string.IsNullOrWhiteSpace(value)

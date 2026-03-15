@@ -3,23 +3,74 @@ using Microsoft.Data.Sqlite;
 
 namespace discoteka_cli.Database;
 
+/// <summary>
+/// Read/write access to the canonical <c>TrackLibrary</c> and its associated index tables.
+/// All methods open a short-lived SQLite connection — there is no shared connection or
+/// connection pool; this is acceptable because SQLite handles concurrent readers well
+/// and writes are always brief.
+/// </summary>
 public interface ITrackLibraryRepository
 {
+    /// <summary>Returns every track in <c>TrackLibrary</c>, ordered by title.</summary>
     Task<IReadOnlyList<TrackLibraryTrack>> GetAllAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Returns only tracks that have a non-empty <c>FilePath</c> (a matched local file).</summary>
     Task<IReadOnlyList<TrackLibraryTrack>> GetAvailableLocallyAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Returns only tracks that have no matched local file.</summary>
     Task<IReadOnlyList<TrackLibraryTrack>> GetNoLocalFileAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Adds 1 to <c>TrackLibrary.Plays</c> for the given track.</summary>
     Task IncrementPlayCountAsync(long trackId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Inserts a row into <c>RecentActivity</c>. Called at the 50% playback threshold,
+    /// not on play start. <paramref name="playedAtUtc"/> should be UTC.
+    /// </summary>
     Task InsertRecentActivityAsync(long trackId, DateTime playedAtUtc, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Reads the pre-built artist/album index (<c>TrackArtists</c> + <c>TrackAlbums</c>).
+    /// When <paramref name="requireLocalFile"/> is <c>true</c>, only albums that have at least
+    /// one locally-available track are returned. Pass <c>null</c> for no filter.
+    /// </summary>
     Task<IReadOnlyList<IndexedArtistAlbumEntry>> GetIndexedArtistAlbumsAsync(bool? requireLocalFile = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns ordered tracks for a specific album from the <c>AlbumToTrack</c> index.
+    /// Sort order: <c>AlbumToTrack.SortOrder</c>, then track number, then title.
+    /// </summary>
     Task<IReadOnlyList<TrackLibraryTrack>> GetIndexedAlbumTracksAsync(long albumId, bool? requireLocalFile = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Builds a full metadata snapshot for the Track Info dialog, including linked
+    /// Apple Music, Rekordbox, and File source records. Returns null if the track
+    /// does not exist in <c>TrackLibrary</c>.
+    /// </summary>
     Task<TrackMetadataSnapshot?> GetTrackMetadataSnapshotAsync(long trackId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Persists user edits from a <see cref="MetadataTabEntry"/> back to the database.
+    /// Primary key columns are excluded from the UPDATE. Field values are type-coerced
+    /// based on the SQLite declared type.
+    /// <para>
+    /// <b>Security note:</b> <c>tab.TableName</c> and <c>tab.KeyColumn</c> are interpolated
+    /// directly into the SQL. They are sourced from <c>PRAGMA table_info</c> (never user text),
+    /// so injection is not possible in normal operation. Do not pass externally-supplied values.
+    /// </para>
+    /// </summary>
     Task SaveMetadataTabAsync(MetadataTabEntry tab, CancellationToken cancellationToken = default);
 }
 
+/// <summary><see cref="ITrackLibraryRepository"/> implementation using Microsoft.Data.Sqlite.</summary>
 public sealed class TrackLibraryRepository : ITrackLibraryRepository
 {
     private readonly string _dbPath;
 
+    /// <param name="dbPath">
+    /// Optional path to the database file. If null, <see cref="DbPaths.GetDefaultDbPath"/> is used.
+    /// The database is initialized (tables created, migrations applied) on construction.
+    /// </param>
     public TrackLibraryRepository(string? dbPath = null)
     {
         _dbPath = DatabaseInitializer.Initialize(dbPath);
@@ -310,6 +361,10 @@ WHERE {tab.KeyColumn} = $key;";
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// Shared track query: JOINs TrackLibrary with AppleLibrary and FileLibrary to coalesce
+    /// the best available TrackNumber. An optional WHERE clause can be appended for filtering.
+    /// </summary>
     private async Task<IReadOnlyList<TrackLibraryTrack>> QueryTracksAsync(string? whereClause, CancellationToken cancellationToken)
     {
         var results = new List<TrackLibraryTrack>();
@@ -468,6 +523,11 @@ ORDER BY t.TrackTitle;";
         return schema;
     }
 
+    /// <summary>
+    /// Converts a <see cref="MetadataFieldEntry"/> value to the appropriate CLR type
+    /// for SQLite binding, based on the field's declared column type.
+    /// Empty/null values become <see cref="DBNull.Value"/>.
+    /// </summary>
     private static object ConvertFieldValue(MetadataFieldEntry field)
     {
         if (string.IsNullOrWhiteSpace(field.Value))

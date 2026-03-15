@@ -5,18 +5,30 @@ using Microsoft.Data.Sqlite;
 
 namespace discoteka_cli.ImporterModules;
 
+/// <summary>
+/// Imports a Rekordbox XML library export into the <c>Rekordbox</c> table.
+/// <para>
+/// The Rekordbox format uses a <c>&lt;DJ_PLAYLISTS&gt;&lt;COLLECTION&gt;</c> element
+/// containing <c>&lt;TRACK&gt;</c> elements whose data is stored as XML attributes
+/// rather than child elements. Duration is exported in whole seconds and converted
+/// to milliseconds on import to match the rest of the library schema.
+/// </para>
+/// </summary>
 public class RekordboxLibrary : IXmlModule
 {
     private XDocument? _document;
     private readonly List<RekordboxTrack> _tracks = new();
 
+    /// <summary>The tracks parsed by the last <see cref="ParseTracks"/> call.</summary>
     public IReadOnlyList<RekordboxTrack> Tracks => _tracks;
 
+    /// <inheritdoc/>
     public void Load(string filePath)
     {
         _document = XDocument.Load(filePath);
     }
 
+    /// <inheritdoc/>
     public int ParseTracks()
     {
         _tracks.Clear();
@@ -40,9 +52,9 @@ public class RekordboxLibrary : IXmlModule
                 TrackArtist = GetAttribute(trackElement, "Artist"),
                 AlbumTitle = GetAttribute(trackElement, "Album"),
                 AlbumArtist = GetAttribute(trackElement, "AlbumArtist"),
-                Duration = GetDurationMilliseconds(trackElement),
+                Duration = GetDurationMilliseconds(trackElement),  // converted from seconds
                 BPM = GetDoubleAttribute(trackElement, "AverageBpm"),
-                Key = GetAttribute(trackElement, "Tonality"),
+                Key = GetAttribute(trackElement, "Tonality"),      // raw Rekordbox key (e.g. "3A")
                 FilePath = GetAttribute(trackElement, "Location")
             };
 
@@ -52,6 +64,11 @@ public class RekordboxLibrary : IXmlModule
         return _tracks.Count;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Deduplication key: <c>TrackId</c> (Rekordbox's internal ID) if present; otherwise
+    /// the (FilePath, TrackTitle, TrackArtist) triple. Existing rows are never updated.
+    /// </remarks>
     public int AddToDatabase(string? dbPath = null)
     {
         if (_tracks.Count == 0)
@@ -156,11 +173,13 @@ VALUES (
         return inserted;
     }
 
+    /// <summary>Returns the string value of an XML attribute, or null if absent.</summary>
     private static string? GetAttribute(XElement element, string name)
     {
         return element.Attribute(name)?.Value;
     }
 
+    /// <summary>Returns the double value of an XML attribute, or null if absent or non-numeric.</summary>
     private static double? GetDoubleAttribute(XElement element, string name)
     {
         var value = GetAttribute(element, name);
@@ -172,6 +191,10 @@ VALUES (
         return null;
     }
 
+    /// <summary>
+    /// Reads Rekordbox's <c>TotalTime</c> attribute (in whole seconds) and converts to milliseconds.
+    /// Returns null if the attribute is absent or not a valid integer.
+    /// </summary>
     private static int? GetDurationMilliseconds(XElement element)
     {
         var value = GetAttribute(element, "TotalTime");

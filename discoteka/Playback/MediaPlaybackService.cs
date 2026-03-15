@@ -6,6 +6,18 @@ using LibVLCSharp.Shared;
 
 namespace discoteka.Playback;
 
+/// <summary>
+/// LibVLCSharp-backed implementation of <see cref="IMediaPlaybackService"/>.
+/// <para>
+/// LibVLC is initialized with <c>--no-video --quiet</c> and hardware decoding enabled.
+/// A single <c>MediaPlayer</c> instance is reused across tracks; media objects are
+/// disposed before each new play to avoid resource leaks.
+/// </para>
+/// <para>
+/// All LibVLC events fire on a VLC internal thread. The VM layer (MainWindowViewModel)
+/// is responsible for marshalling event callbacks onto the Avalonia UI thread.
+/// </para>
+/// </summary>
 public sealed class MediaPlaybackService : IMediaPlaybackService
 {
     private readonly LibVLC _libVlc;
@@ -308,12 +320,16 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
         _libVlc.Dispose();
     }
 
+    /// <summary>Fires <see cref="PlaybackStateChanged"/> with the current state snapshot.</summary>
     private void EmitState()
     {
         PlaybackStateChanged?.Invoke(State);
     }
 
-    // Extension point for future weighted shuffle logic.
+    /// <summary>
+    /// Picks a random queue index that is not equal to <paramref name="currentIndex"/>.
+    /// Currently uniform random — extension point for weighted/history-aware shuffle.
+    /// </summary>
     private int ShuffleChooseNextTrack(int currentIndex, int queueCount)
     {
         if (queueCount <= 0)

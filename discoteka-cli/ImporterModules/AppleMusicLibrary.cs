@@ -5,18 +5,29 @@ using Microsoft.Data.Sqlite;
 
 namespace discoteka_cli.ImporterModules;
 
+/// <summary>
+/// Imports an Apple Music / iTunes XML library export into the <c>AppleLibrary</c> table.
+/// <para>
+/// Apple's plist format uses a root <c>&lt;plist&gt;&lt;dict&gt;</c> containing a "Tracks"
+/// key whose value is a <c>&lt;dict&gt;</c> of track-ID → track-dict pairs. Each track dict
+/// is a sequence of alternating <c>&lt;key&gt;</c> / value-element pairs.
+/// </para>
+/// </summary>
 public class AppleMusicLibrary : IXmlModule
 {
     private XDocument? _document;
     private readonly List<AppleMusicTrack> _tracks = new();
 
+    /// <summary>The tracks parsed by the last <see cref="ParseTracks"/> call.</summary>
     public IReadOnlyList<AppleMusicTrack> Tracks => _tracks;
 
+    /// <inheritdoc/>
     public void Load(string filePath)
     {
         _document = XDocument.Load(filePath);
     }
 
+    /// <inheritdoc/>
     public int ParseTracks()
     {
         _tracks.Clear();
@@ -48,6 +59,7 @@ public class AppleMusicLibrary : IXmlModule
             var trackDict = ParseDict(entry.Value);
             var track = new AppleMusicTrack
             {
+                // Prefer the stable Persistent ID; fall back to the session-scoped Track ID
                 AppleMusicId = GetString(trackDict, "Persistent ID") ?? GetString(trackDict, "Track ID"),
                 TrackTitle = GetString(trackDict, "Name"),
                 TrackArtist = GetString(trackDict, "Artist"),
@@ -55,7 +67,7 @@ public class AppleMusicLibrary : IXmlModule
                 AlbumArtist = GetString(trackDict, "Album Artist"),
                 TrackNumber = GetInt(trackDict, "Track Number"),
                 Genre = GetString(trackDict, "Genre"),
-                Duration = GetInt(trackDict, "Total Time"),
+                Duration = GetInt(trackDict, "Total Time"),  // already in milliseconds
                 Plays = GetInt(trackDict, "Play Count")
             };
 
@@ -65,6 +77,12 @@ public class AppleMusicLibrary : IXmlModule
         return _tracks.Count;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Deduplication key: <c>AppleMusicId</c> if present; otherwise the
+    /// (TrackTitle, TrackArtist, AlbumTitle) triple. Existing rows are never updated —
+    /// run LibraryCleaner + MatchEngine afterward to propagate any metadata changes.
+    /// </remarks>
     public int AddToDatabase(string? dbPath = null)
     {
         if (_tracks.Count == 0)
@@ -145,6 +163,8 @@ VALUES (
                 continue;
             }
 
+            // Raw fields store the original un-cleaned values; MetadataCleaner will populate
+            // the cleaned versions and metadata columns (MusicalKey, BPM, etc.) later.
             insertCommand.Parameters.Clear();
             insertCommand.Parameters.AddWithValue("$appleMusicId", (object?)track.AppleMusicId ?? DBNull.Value);
             insertCommand.Parameters.AddWithValue("$trackTitle", (object?)track.TrackTitle ?? DBNull.Value);
@@ -172,6 +192,11 @@ VALUES (
         return inserted;
     }
 
+    /// <summary>
+    /// Converts a plist <c>&lt;dict&gt;</c> element into a string→XElement map.
+    /// The plist dict format interleaves <c>&lt;key&gt;</c> and value elements;
+    /// we step through them in pairs.
+    /// </summary>
     private static Dictionary<string, XElement> ParseDict(XElement dictElement)
     {
         var elements = dictElement.Elements().ToList();
@@ -192,6 +217,7 @@ VALUES (
         return dict;
     }
 
+    /// <summary>Returns the string representation of any plist value element, or null if the key is absent.</summary>
     private static string? GetString(Dictionary<string, XElement> dict, string key)
     {
         if (!dict.TryGetValue(key, out var element))
@@ -210,6 +236,7 @@ VALUES (
         };
     }
 
+    /// <summary>Returns the integer value of a plist element, or null if absent or non-numeric.</summary>
     private static int? GetInt(Dictionary<string, XElement> dict, string key)
     {
         var value = GetString(dict, key);
