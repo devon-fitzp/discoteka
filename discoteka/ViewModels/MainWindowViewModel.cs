@@ -78,12 +78,14 @@ public partial class MainWindowViewModel : ViewModelBase
     private long? _currentPlaybackTrackId;
     private bool _currentPlaybackTrackCounted;
     private string _nowPlayingTitle = "No track selected";
+    private string _nowPlayingArtist = string.Empty;
     private string _nowPlayingTimeText = "0:00 / 0:00";
     private double _playbackPositionSeconds;
     private double _playbackDurationSeconds = 100;
     private int _volume = 70;
     private bool _isPlaying;
-    private string _statusMessage = "Ready.";
+    private string _statusMessage = string.Empty;
+    private CancellationTokenSource? _statusDecayCts;
     private int _trackCount;
     private ArtistGroupViewModel? _selectedArtistGroup;
     private AlbumBrowserItemViewModel? _selectedAlbumsViewAlbum;
@@ -212,6 +214,12 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         get => _nowPlayingTitle;
         private set => SetProperty(ref _nowPlayingTitle, value);
+    }
+
+    public string NowPlayingArtist
+    {
+        get => _nowPlayingArtist;
+        private set => SetProperty(ref _nowPlayingArtist, value);
     }
 
     public string NowPlayingTimeText
@@ -635,7 +643,20 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         var pending = Math.Max(0, Interlocked.CompareExchange(ref _pendingJobs, 0, 0));
         var finalMessage = pending > 0 ? $"{message} ({pending} job{(pending == 1 ? "" : "s")} queued)" : message;
-        Dispatcher.UIThread.Post(() => StatusMessage = finalMessage);
+        Dispatcher.UIThread.Post(() => SetStatusWithDecay(finalMessage));
+    }
+
+    private void SetStatusWithDecay(string message)
+    {
+        _statusDecayCts?.Cancel();
+        _statusDecayCts = new CancellationTokenSource();
+        var token = _statusDecayCts.Token;
+        StatusMessage = message;
+        Task.Delay(10_000, token).ContinueWith(t =>
+        {
+            if (t.IsCompletedSuccessfully)
+                Dispatcher.UIThread.Post(() => StatusMessage = string.Empty);
+        }, TaskScheduler.Default);
     }
 
     private static TrackRowViewModel MapTrack(discoteka_cli.Models.TrackLibraryTrack track)
@@ -1123,11 +1144,8 @@ public partial class MainWindowViewModel : ViewModelBase
 
         Dispatcher.UIThread.Post(() =>
         {
-            NowPlayingTitle = track == null
-                ? "No track selected"
-                : string.IsNullOrWhiteSpace(track.Artist)
-                    ? track.Title
-                    : $"{track.Title} - {track.Artist}";
+            NowPlayingTitle = track == null ? "No track selected" : track.Title;
+            NowPlayingArtist = track == null ? string.Empty : (track.Artist ?? string.Empty);
         });
     }
 
