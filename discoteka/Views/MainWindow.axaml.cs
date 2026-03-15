@@ -136,16 +136,58 @@ public partial class MainWindow : Window
 
     private async void OnArtistAlbumPlayClick(object? sender, RoutedEventArgs e)
     {
-        if (ViewModel == null || sender is not Button { DataContext: MainWindowViewModel.ArtistGroupViewModel artist } || artist.SelectedAlbum == null)
+        if (ViewModel == null || sender is not Button button)
         {
             return;
         }
 
-        var result = await ViewModel.PlayArtistAlbumAsync(artist.SelectedAlbum);
+        MainWindowViewModel.AlbumGroupViewModel? album = button.DataContext switch
+        {
+            MainWindowViewModel.AlbumGroupViewModel selectedAlbum => selectedAlbum,
+            MainWindowViewModel.ArtistGroupViewModel artist => artist.SelectedAlbum,
+            _ => null
+        };
+
+        if (album == null)
+        {
+            return;
+        }
+
+        var result = await ViewModel.PlayArtistAlbumAsync(album);
         if (!result.Started && result.UserError == "No local file!")
         {
             await ShowSimpleMessageAsync("No local file!");
         }
+    }
+
+    private async void OnAlbumsGridAlbumClick(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel == null || sender is not Button { DataContext: MainWindowViewModel.AlbumBrowserItemViewModel album })
+        {
+            return;
+        }
+
+        await ViewModel.ToggleAlbumsViewAlbumAsync(album);
+    }
+
+    private async void OnAlbumsGridAlbumPlayClick(object? sender, RoutedEventArgs e)
+    {
+        e.Handled = true;
+        if (ViewModel == null || sender is not Button { DataContext: MainWindowViewModel.AlbumBrowserItemViewModel album })
+        {
+            return;
+        }
+
+        var result = await ViewModel.PlayAlbumsViewAlbumAsync(album);
+        if (!result.Started && result.UserError == "No local file!")
+        {
+            await ShowSimpleMessageAsync("No local file!");
+        }
+    }
+
+    private void OnAlbumsLoadMoreClick(object? sender, RoutedEventArgs e)
+    {
+        ViewModel?.LoadMoreAlbumsViewPage();
     }
 
     private async void OnTrackListDoubleTapped(object? sender, TappedEventArgs e)

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -64,6 +65,13 @@ public partial class MainWindowViewModel : ViewModelBase
     private int _pendingJobs;
     private int _loadVersion;
     private int _artistIndexLoadVersion;
+    private int _albumIndexLoadVersion;
+    private IReadOnlyList<discoteka_cli.Models.IndexedArtistAlbumEntry>? _cachedIndexedArtistAlbumRows;
+    private bool? _cachedIndexedArtistAlbumRowsRequireLocalFile;
+    private IReadOnlyList<ArtistGroupViewModel>? _cachedArtistBrowserGroups;
+    private bool? _cachedArtistBrowserGroupsRequireLocalFile;
+    private IReadOnlyList<AlbumBrowserItemViewModel>? _cachedAlbumBrowserGroups;
+    private bool? _cachedAlbumBrowserGroupsRequireLocalFile;
     private bool _suppressVolumeUpdate;
     private bool _shuffleEnabled;
     private RepeatMode _playerRepeatMode = RepeatMode.Off;
@@ -77,6 +85,12 @@ public partial class MainWindowViewModel : ViewModelBase
     private bool _isPlaying;
     private string _statusMessage = "Ready.";
     private int _trackCount;
+    private ArtistGroupViewModel? _selectedArtistGroup;
+    private AlbumBrowserItemViewModel? _selectedAlbumsViewAlbum;
+    private IReadOnlyList<ArtistGroupViewModel> _artistGroups = Array.Empty<ArtistGroupViewModel>();
+    private IReadOnlyList<AlbumBrowserItemViewModel> _albumGroups = Array.Empty<AlbumBrowserItemViewModel>();
+    private IReadOnlyList<AlbumBrowserItemViewModel> _visibleAlbumGroups = Array.Empty<AlbumBrowserItemViewModel>();
+    private const int AlbumGridPageSize = 200;
     private DefaultSortOption _defaultSort = DefaultSortOption.Title;
     private LibraryViewMode _libraryViewMode = LibraryViewMode.AllMusic;
     private SmartFilterMode _smartFilterMode = SmartFilterMode.None;
@@ -115,7 +129,77 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public string Greeting { get; } = "Welcome to discoteka!";
     public ObservableCollection<TrackRowViewModel> Tracks { get; } = new();
-    public ObservableCollection<ArtistGroupViewModel> ArtistGroups { get; } = new();
+    public IReadOnlyList<ArtistGroupViewModel> ArtistGroups
+    {
+        get => _artistGroups;
+        private set
+        {
+            if (SetProperty(ref _artistGroups, value))
+            {
+                if (_selectedArtistGroup != null && !_artistGroups.Contains(_selectedArtistGroup))
+                {
+                    SelectedArtistGroup = null;
+                }
+            }
+        }
+    }
+    public ArtistGroupViewModel? SelectedArtistGroup
+    {
+        get => _selectedArtistGroup;
+        set
+        {
+            if (SetProperty(ref _selectedArtistGroup, value))
+            {
+                if (value != null)
+                {
+                    Console.WriteLine($"[Artists][Select] Artist '{value.Name}' (albums={value.AlbumCount})");
+                    value.IsExpanded = true; // reuses lazy album materialization
+                }
+
+                OnPropertyChanged(nameof(HasSelectedArtistGroup));
+            }
+        }
+    }
+    public bool HasSelectedArtistGroup => SelectedArtistGroup != null;
+    public IReadOnlyList<AlbumBrowserItemViewModel> AlbumGroups
+    {
+        get => _albumGroups;
+        private set
+        {
+            if (SetProperty(ref _albumGroups, value))
+            {
+                ResetVisibleAlbumGroups();
+            }
+        }
+    }
+    public IReadOnlyList<AlbumBrowserItemViewModel> VisibleAlbumGroups
+    {
+        get => _visibleAlbumGroups;
+        private set
+        {
+            if (SetProperty(ref _visibleAlbumGroups, value))
+            {
+                OnPropertyChanged(nameof(CanLoadMoreAlbumGroups));
+                OnPropertyChanged(nameof(AlbumGridStatusText));
+            }
+        }
+    }
+    public AlbumBrowserItemViewModel? SelectedAlbumsViewAlbum
+    {
+        get => _selectedAlbumsViewAlbum;
+        private set
+        {
+            if (SetProperty(ref _selectedAlbumsViewAlbum, value))
+            {
+                OnPropertyChanged(nameof(HasSelectedAlbumsViewAlbum));
+            }
+        }
+    }
+    public bool HasSelectedAlbumsViewAlbum => SelectedAlbumsViewAlbum != null;
+    public bool CanLoadMoreAlbumGroups => VisibleAlbumGroups.Count < AlbumGroups.Count;
+    public string AlbumGridStatusText => AlbumGroups.Count == 0
+        ? "No albums"
+        : $"{VisibleAlbumGroups.Count} of {AlbumGroups.Count} albums";
 
     public string StatusMessage
     {
@@ -200,7 +284,7 @@ public partial class MainWindowViewModel : ViewModelBase
         : _libraryViewMode switch
         {
             LibraryViewMode.Artists => ArtistGroups.Count == 1 ? "1 artist" : $"{ArtistGroups.Count} artists",
-            LibraryViewMode.Albums => "Album browser (v1 framework in progress)",
+            LibraryViewMode.Albums => AlbumGroups.Count == 1 ? "1 album" : $"{AlbumGroups.Count} albums",
             _ => string.Empty
         };
 
@@ -283,14 +367,17 @@ public partial class MainWindowViewModel : ViewModelBase
     public bool PlayTrackFromVisibleIndex(int index, out string? userError)
     {
         userError = null;
+        Console.WriteLine($"[PlaybackVM] PlayTrackFromVisibleIndex requested index={index}, visibleCount={Tracks.Count}");
         if (_playbackService == null)
         {
             userError = "Playback unavailable.";
+            Console.Error.WriteLine("[PlaybackVM] Playback unavailable in PlayTrackFromVisibleIndex");
             return false;
         }
 
         if (index < 0 || index >= Tracks.Count)
         {
+            Console.Error.WriteLine($"[PlaybackVM] Visible index out of range: {index}");
             return false;
         }
 
@@ -299,6 +386,7 @@ public partial class MainWindowViewModel : ViewModelBase
         if (!HasLocalFile(selected.FilePath))
         {
             userError = "No local file!";
+            Console.Error.WriteLine($"[PlaybackVM] Selected visible track has no local file: id={selected.TrackId}, title='{selected.Title}'");
             return false;
         }
 
@@ -307,7 +395,7 @@ public partial class MainWindowViewModel : ViewModelBase
             .ToList();
         _playbackService.SetQueue(queue, index);
         var started = _playbackService.PlayAtIndex(index);
-        Console.WriteLine($"[Playback] Play from visible index {index}: {(started ? "started" : "failed")}");
+        Console.WriteLine($"[PlaybackVM] Play from visible index {index}: {(started ? "started" : "failed")} (queueCount={queue.Count})");
         if (!started)
         {
             userError = "No local file!";
@@ -319,24 +407,29 @@ public partial class MainWindowViewModel : ViewModelBase
     public bool TogglePlayPause(int preferredIndex, out string? userError)
     {
         userError = null;
+        Console.WriteLine($"[PlaybackVM] TogglePlayPause preferredIndex={preferredIndex}");
         if (_playbackService == null)
         {
             userError = "Playback unavailable.";
+            Console.Error.WriteLine("[PlaybackVM] Playback unavailable in TogglePlayPause");
             return false;
         }
 
         if (_playbackService.CurrentTrack == null)
         {
             var startIndex = preferredIndex >= 0 && preferredIndex < Tracks.Count ? preferredIndex : 0;
+            Console.WriteLine($"[PlaybackVM] No current track, starting from visible index {startIndex}");
             return PlayTrackFromVisibleIndex(startIndex, out userError);
         }
 
         if (_playbackService.State.IsPlaying)
         {
+            Console.WriteLine("[PlaybackVM] Current state is playing, issuing Pause");
             _playbackService.Pause();
         }
         else
         {
+            Console.WriteLine("[PlaybackVM] Current state is not playing, issuing Resume");
             _playbackService.Resume();
         }
 
@@ -350,6 +443,7 @@ public partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        Console.WriteLine("[PlaybackVM] PlayNext requested by UI");
         TryPlayDirection(skipMissingFiles: true, forward: true);
     }
 
@@ -360,6 +454,7 @@ public partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        Console.WriteLine("[PlaybackVM] PlayPrevious requested by UI");
         TryPlayDirection(skipMissingFiles: true, forward: false);
     }
 
@@ -386,9 +481,59 @@ public partial class MainWindowViewModel : ViewModelBase
             return (false, null);
         }
 
+        Console.WriteLine($"[PlaybackVM] PlayArtistAlbumAsync albumId={album.AlbumId}, title='{album.Title}', loaded={album.IsTracksLoaded}");
         await EnsureAlbumTracksLoadedAsync(album);
+        Console.WriteLine($"[PlaybackVM] Artist album tracks ready count={album.Tracks.Count} for albumId={album.AlbumId}");
         var started = PlayTrackSequence(album.Tracks, out var userError);
+        Console.WriteLine($"[PlaybackVM] PlayArtistAlbumAsync result started={started}, userError={userError ?? "<null>"}");
         return (started, userError);
+    }
+
+    public async Task ToggleAlbumsViewAlbumAsync(AlbumBrowserItemViewModel? album)
+    {
+        if (album == null)
+        {
+            return;
+        }
+
+        await EnsureAlbumTracksLoadedAsync(album);
+        foreach (var other in AlbumGroups)
+        {
+            if (!ReferenceEquals(other, album) && other.IsExpanded)
+            {
+                other.IsExpanded = false;
+            }
+        }
+
+        var willExpand = !album.IsExpanded;
+        album.IsExpanded = willExpand;
+        SelectedAlbumsViewAlbum = willExpand ? album : null;
+    }
+
+    public async Task<(bool Started, string? UserError)> PlayAlbumsViewAlbumAsync(AlbumBrowserItemViewModel? album)
+    {
+        if (album == null)
+        {
+            return (false, null);
+        }
+
+        Console.WriteLine($"[PlaybackVM] PlayAlbumsViewAlbumAsync albumId={album.AlbumId}, title='{album.Title}', loaded={album.IsTracksLoaded}");
+        await EnsureAlbumTracksLoadedAsync(album);
+        Console.WriteLine($"[PlaybackVM] Albums view album tracks ready count={album.Tracks.Count} for albumId={album.AlbumId}");
+        var started = PlayTrackSequence(album.Tracks, out var userError);
+        Console.WriteLine($"[PlaybackVM] PlayAlbumsViewAlbumAsync result started={started}, userError={userError ?? "<null>"}");
+        return (started, userError);
+    }
+
+    public void LoadMoreAlbumsViewPage()
+    {
+        if (!CanLoadMoreAlbumGroups)
+        {
+            return;
+        }
+
+        var nextCount = Math.Min(AlbumGroups.Count, VisibleAlbumGroups.Count + AlbumGridPageSize);
+        VisibleAlbumGroups = AlbumGroups.Take(nextCount).ToList();
     }
 
     public Task<discoteka_cli.Models.TrackMetadataSnapshot?> GetTrackMetadataSnapshotAsync(long trackId, CancellationToken cancellationToken = default)
@@ -580,6 +725,8 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private void RebuildVisibleTracks()
     {
+        InvalidateIndexedBrowserCache();
+
         IEnumerable<TrackRowViewModel> filtered = _libraryRows;
         filtered = _smartFilterMode switch
         {
@@ -594,53 +741,148 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             _ = LoadArtistIndexAsync();
         }
+        else if (IsAlbumsView)
+        {
+            _ = LoadAlbumIndexAsync();
+        }
         ApplyCurrentSort();
     }
 
     private async Task LoadArtistIndexAsync()
     {
         var loadVersion = Interlocked.Increment(ref _artistIndexLoadVersion);
+        var totalStopwatch = Stopwatch.StartNew();
         try
         {
-            var indexedRows = await _trackRepository.GetIndexedArtistAlbumsAsync(MapSmartFilterToIndexedQuery());
-            var artists = indexedRows
-                .GroupBy(row => (row.ArtistId, row.ArtistName))
-                .OrderBy(group => group.Key.ArtistName, StringComparer.OrdinalIgnoreCase)
-                .Select(group =>
+            Console.WriteLine($"[Artists][Load] Start (version={loadVersion}, filter={_smartFilterMode}, mem={GC.GetTotalMemory(false) / (1024 * 1024)} MB)");
+            var fetchStopwatch = Stopwatch.StartNew();
+            var indexedRows = await GetIndexedArtistAlbumRowsAsync();
+            fetchStopwatch.Stop();
+            Console.WriteLine($"[Artists][Load] Indexed rows fetched: {indexedRows.Count} in {fetchStopwatch.ElapsedMilliseconds} ms (mem={GC.GetTotalMemory(false) / (1024 * 1024)} MB)");
+            var requireLocalFile = MapSmartFilterToIndexedQuery();
+            if (_cachedArtistBrowserGroups != null && _cachedArtistBrowserGroupsRequireLocalFile == requireLocalFile)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() =>
                 {
-                    var artist = new ArtistGroupViewModel(group.Key.ArtistId, group.Key.ArtistName);
-                    foreach (var albumRow in group.OrderBy(a => a.AlbumTitle, StringComparer.OrdinalIgnoreCase))
+                    if (loadVersion != Volatile.Read(ref _artistIndexLoadVersion))
                     {
-                        artist.Albums.Add(new AlbumGroupViewModel(
-                            artist,
-                            albumRow.AlbumId,
-                            albumRow.AlbumTitle,
-                            albumRow.AlbumTrackCount));
+                        return;
                     }
 
-                    return artist;
-                })
-                .ToList();
+                    ArtistGroups = _cachedArtistBrowserGroups;
+                    OnPropertyChanged(nameof(LibrarySubtitleText));
+                    Console.WriteLine($"[Artists][Load] Cache hit applied to UI: artists={ArtistGroups.Count} (version={loadVersion}, mem={GC.GetTotalMemory(false) / (1024 * 1024)} MB)");
+                });
+                totalStopwatch.Stop();
+                Console.WriteLine($"[Artists][Load] Complete (cache hit) in {totalStopwatch.ElapsedMilliseconds} ms");
+                return;
+            }
 
+            var buildStopwatch = Stopwatch.StartNew();
+            var artists = new List<ArtistGroupViewModel>(Math.Min(indexedRows.Count, 4096));
+            ArtistGroupViewModel? currentArtist = null;
+            long currentArtistId = -1;
+            var albumSeedCount = 0;
+
+            // SQL already orders by artist/album, so build the tree in a single pass to avoid LINQ grouping allocations.
+            foreach (var row in indexedRows)
+            {
+                if (currentArtist == null || row.ArtistId != currentArtistId)
+                {
+                    currentArtist = new ArtistGroupViewModel(row.ArtistId, row.ArtistName);
+                    currentArtistId = row.ArtistId;
+                    artists.Add(currentArtist);
+                }
+
+                currentArtist.AddAlbumSeed(row.AlbumId, row.AlbumTitle, row.AlbumTrackCount);
+                albumSeedCount++;
+            }
+            buildStopwatch.Stop();
+            Console.WriteLine($"[Artists][Load] Built artist tree: artists={artists.Count}, albumSeeds={albumSeedCount} in {buildStopwatch.ElapsedMilliseconds} ms (mem={GC.GetTotalMemory(false) / (1024 * 1024)} MB)");
+
+            var uiStopwatch = Stopwatch.StartNew();
             await Dispatcher.UIThread.InvokeAsync(() =>
             {
                 if (loadVersion != Volatile.Read(ref _artistIndexLoadVersion))
                 {
+                    Console.WriteLine($"[Artists][Load] Skipped stale UI apply (version={loadVersion})");
                     return;
                 }
 
-                ArtistGroups.Clear();
-                foreach (var artist in artists)
+                _cachedArtistBrowserGroups = artists;
+                _cachedArtistBrowserGroupsRequireLocalFile = requireLocalFile;
+                ArtistGroups = artists;
+
+                OnPropertyChanged(nameof(LibrarySubtitleText));
+                Console.WriteLine($"[Artists][Load] UI apply complete: artists={ArtistGroups.Count} (version={loadVersion}, mem={GC.GetTotalMemory(false) / (1024 * 1024)} MB)");
+            });
+            uiStopwatch.Stop();
+            totalStopwatch.Stop();
+            Console.WriteLine($"[Artists][Load] Complete in {totalStopwatch.ElapsedMilliseconds} ms (ui={uiStopwatch.ElapsedMilliseconds} ms)");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Artists] Failed to load indexed artist view: {ex}");
+        }
+    }
+
+    private async Task LoadAlbumIndexAsync()
+    {
+        var loadVersion = Interlocked.Increment(ref _albumIndexLoadVersion);
+        try
+        {
+            var indexedRows = await GetIndexedArtistAlbumRowsAsync();
+            var requireLocalFile = MapSmartFilterToIndexedQuery();
+            if (_cachedAlbumBrowserGroups != null && _cachedAlbumBrowserGroupsRequireLocalFile == requireLocalFile)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() =>
                 {
-                    ArtistGroups.Add(artist);
+                    if (loadVersion != Volatile.Read(ref _albumIndexLoadVersion))
+                    {
+                        return;
+                    }
+
+                    AlbumGroups = _cachedAlbumBrowserGroups;
+                    SelectedAlbumsViewAlbum = null;
+                    OnPropertyChanged(nameof(LibrarySubtitleText));
+                });
+                return;
+            }
+
+            var albums = indexedRows
+                .GroupBy(row => row.AlbumId)
+                .Select(group =>
+                {
+                    var first = group.First();
+                    var artistName = string.IsNullOrWhiteSpace(first.AlbumArtistName)
+                        ? group.Select(g => g.ArtistName).FirstOrDefault(name => !string.IsNullOrWhiteSpace(name)) ?? "Unknown Artist"
+                        : first.AlbumArtistName;
+                    var maxTracks = group.Max(g => g.AlbumTrackCount);
+
+                    return new AlbumBrowserItemViewModel(first.AlbumId, first.AlbumTitle, artistName, first.ReleaseYear, maxTracks);
+                })
+                .OrderBy(album => album.Title, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(album => album.ArtistName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (loadVersion != Volatile.Read(ref _albumIndexLoadVersion))
+                {
+                    return;
                 }
+
+                _cachedAlbumBrowserGroups = albums;
+                _cachedAlbumBrowserGroupsRequireLocalFile = requireLocalFile;
+                AlbumGroups = albums;
+                SelectedAlbumsViewAlbum = null;
 
                 OnPropertyChanged(nameof(LibrarySubtitleText));
             });
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[Artists] Failed to load indexed artist view: {ex}");
+            Console.Error.WriteLine($"[Albums] Failed to load indexed album view: {ex}");
         }
     }
 
@@ -696,14 +938,38 @@ public partial class MainWindowViewModel : ViewModelBase
         OnPropertyChanged(nameof(LibraryViewTitle));
         OnPropertyChanged(nameof(LibrarySubtitleText));
         UpdateStatusFromPending($"{LibraryViewTitle} view selected.");
+
+        if (mode == LibraryViewMode.Artists)
+        {
+            ClearAlbumBrowserState();
+        }
+        else if (mode == LibraryViewMode.Albums)
+        {
+            ClearArtistBrowserState();
+        }
+        else
+        {
+            ClearArtistBrowserState();
+            ClearAlbumBrowserState();
+        }
+
         if (mode == LibraryViewMode.Artists)
         {
             _ = LoadArtistIndexAsync();
+        }
+        else if (mode == LibraryViewMode.Albums)
+        {
+            _ = LoadAlbumIndexAsync();
         }
     }
 
     private void SetSmartFilter(SmartFilterMode mode)
     {
+        if (_smartFilterMode == mode)
+        {
+            return;
+        }
+
         _smartFilterMode = mode;
         Console.WriteLine($"[Library] Smart filter set to {_smartFilterMode}.");
         RebuildVisibleTracks();
@@ -726,6 +992,56 @@ public partial class MainWindowViewModel : ViewModelBase
         };
     }
 
+    private async Task<IReadOnlyList<discoteka_cli.Models.IndexedArtistAlbumEntry>> GetIndexedArtistAlbumRowsAsync()
+    {
+        var requireLocalFile = MapSmartFilterToIndexedQuery();
+        if (_cachedIndexedArtistAlbumRows != null && _cachedIndexedArtistAlbumRowsRequireLocalFile == requireLocalFile)
+        {
+            return _cachedIndexedArtistAlbumRows;
+        }
+
+        var rows = await _trackRepository.GetIndexedArtistAlbumsAsync(requireLocalFile);
+        _cachedIndexedArtistAlbumRows = rows;
+        _cachedIndexedArtistAlbumRowsRequireLocalFile = requireLocalFile;
+        return rows;
+    }
+
+    private void InvalidateIndexedBrowserCache()
+    {
+        _cachedIndexedArtistAlbumRows = null;
+        _cachedIndexedArtistAlbumRowsRequireLocalFile = null;
+        _cachedArtistBrowserGroups = null;
+        _cachedArtistBrowserGroupsRequireLocalFile = null;
+        _cachedAlbumBrowserGroups = null;
+        _cachedAlbumBrowserGroupsRequireLocalFile = null;
+    }
+
+    private void ClearArtistBrowserState()
+    {
+        SelectedArtistGroup = null;
+        ArtistGroups = Array.Empty<ArtistGroupViewModel>();
+        OnPropertyChanged(nameof(LibrarySubtitleText));
+    }
+
+    private void ClearAlbumBrowserState()
+    {
+        AlbumGroups = Array.Empty<AlbumBrowserItemViewModel>();
+        VisibleAlbumGroups = Array.Empty<AlbumBrowserItemViewModel>();
+        SelectedAlbumsViewAlbum = null;
+        OnPropertyChanged(nameof(LibrarySubtitleText));
+    }
+
+    private void ResetVisibleAlbumGroups()
+    {
+        if (AlbumGroups.Count == 0)
+        {
+            VisibleAlbumGroups = Array.Empty<AlbumBrowserItemViewModel>();
+            return;
+        }
+
+        VisibleAlbumGroups = AlbumGroups.Take(Math.Min(AlbumGroups.Count, AlbumGridPageSize)).ToList();
+    }
+
     private async Task EnsureAlbumTracksLoadedAsync(AlbumGroupViewModel album)
     {
         if (album.IsTracksLoaded)
@@ -742,6 +1058,26 @@ public partial class MainWindowViewModel : ViewModelBase
         catch (Exception ex)
         {
             Console.Error.WriteLine($"[Artists] Failed to load tracks for album {album.AlbumId}: {ex}");
+            album.SetTracks(new List<TrackRowViewModel>());
+        }
+    }
+
+    private async Task EnsureAlbumTracksLoadedAsync(AlbumBrowserItemViewModel album)
+    {
+        if (album.IsTracksLoaded)
+        {
+            return;
+        }
+
+        try
+        {
+            var tracks = await _trackRepository.GetIndexedAlbumTracksAsync(album.AlbumId, MapSmartFilterToIndexedQuery());
+            var rows = tracks.Select(MapTrack).ToList();
+            album.SetTracks(rows);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[Albums] Failed to load tracks for album {album.AlbumId}: {ex}");
             album.SetTracks(new List<TrackRowViewModel>());
         }
     }
@@ -779,6 +1115,9 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private void OnCurrentTrackChanged(PlaybackTrack? track)
     {
+        Console.WriteLine(track == null
+            ? "[PlaybackVM] OnCurrentTrackChanged -> <null>"
+            : $"[PlaybackVM] OnCurrentTrackChanged -> id={track.TrackId}, title='{track.Title}', artist='{track.Artist}'");
         _currentPlaybackTrackId = track?.TrackId;
         _currentPlaybackTrackCounted = false;
 
@@ -794,20 +1133,26 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private void OnPlaybackEnded()
     {
-        Console.WriteLine("[Playback] Track ended. Moving to next track...");
+        Console.WriteLine("[PlaybackVM] OnPlaybackEnded received. Scheduling auto-advance.");
         Dispatcher.UIThread.Post(() =>
         {
+            Console.WriteLine("[PlaybackVM] Auto-advance executing on UI thread.");
             if (!TryPlayDirection(skipMissingFiles: true, forward: true))
             {
+                Console.WriteLine("[PlaybackVM] Auto-advance failed. Marking queue ended.");
                 IsPlaying = false;
                 UpdateStatusFromPending("Reached end of queue.");
+            }
+            else
+            {
+                Console.WriteLine("[PlaybackVM] Auto-advance succeeded.");
             }
         });
     }
 
     private void OnPlaybackError(string message)
     {
-        Console.Error.WriteLine($"[Playback] Error: {message}");
+        Console.Error.WriteLine($"[PlaybackVM] Error: {message}");
         UpdateStatusFromPending(message);
     }
 
@@ -859,29 +1204,35 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         if (_playbackService == null)
         {
+            Console.Error.WriteLine("[PlaybackVM] TryPlayDirection aborted: playback service unavailable");
             return false;
         }
 
+        Console.WriteLine($"[PlaybackVM] TryPlayDirection start forward={forward}, skipMissing={skipMissingFiles}, queueCount={_playbackService.Queue.Count}, currentIdx={_playbackService.CurrentQueueIndex}");
         var attempts = 0;
         var maxAttempts = Math.Max(1, _playbackService.Queue.Count);
         while (attempts < maxAttempts)
         {
             var before = _playbackService.CurrentQueueIndex;
             var moved = forward ? _playbackService.PlayNext() : _playbackService.PlayPrevious();
+            Console.WriteLine($"[PlaybackVM] TryPlayDirection attempt={attempts + 1}/{maxAttempts}, before={before}, moved={moved}, after={_playbackService.CurrentQueueIndex}");
             if (moved)
             {
+                Console.WriteLine("[PlaybackVM] TryPlayDirection success");
                 return true;
             }
 
             var after = _playbackService.CurrentQueueIndex;
             if (!skipMissingFiles || after == before)
             {
+                Console.WriteLine($"[PlaybackVM] TryPlayDirection stopping (skipMissing={skipMissingFiles}, after==before={after == before})");
                 break;
             }
 
             attempts++;
         }
 
+        Console.WriteLine("[PlaybackVM] TryPlayDirection failed");
         return false;
     }
 
@@ -898,15 +1249,20 @@ public partial class MainWindowViewModel : ViewModelBase
     private bool PlayTrackSequence(IEnumerable<TrackRowViewModel> rows, out string? userError)
     {
         userError = null;
+        Console.WriteLine("[PlaybackVM] PlayTrackSequence start");
         if (_playbackService == null)
         {
             userError = "Playback unavailable.";
+            Console.Error.WriteLine("[PlaybackVM] PlayTrackSequence aborted: playback unavailable");
             return false;
         }
 
         var queue = rows.Select(MapPlaybackTrack).ToList();
+        var localCount = queue.Count(track => HasLocalFile(track.FilePath));
+        Console.WriteLine($"[PlaybackVM] PlayTrackSequence queue built count={queue.Count}, localCount={localCount}");
         if (queue.Count == 0)
         {
+            Console.WriteLine("[PlaybackVM] PlayTrackSequence aborted: empty queue");
             return false;
         }
 
@@ -914,11 +1270,14 @@ public partial class MainWindowViewModel : ViewModelBase
         if (startIndex < 0)
         {
             userError = "No local file!";
+            Console.Error.WriteLine("[PlaybackVM] PlayTrackSequence aborted: no local tracks in queue");
             return false;
         }
 
+        Console.WriteLine($"[PlaybackVM] PlayTrackSequence startIndex={startIndex}, startTrack={queue[startIndex].TrackId}:{queue[startIndex].Title}");
         _playbackService.SetQueue(queue, startIndex);
         var started = _playbackService.PlayAtIndex(startIndex);
+        Console.WriteLine($"[PlaybackVM] PlayTrackSequence PlayAtIndex returned {started}");
         if (!started)
         {
             userError = "No local file!";
@@ -968,8 +1327,11 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public sealed class ArtistGroupViewModel : ViewModelBase
     {
+        private readonly List<ArtistAlbumSeed> _albumSeeds = new();
+        private ObservableCollection<AlbumGroupViewModel>? _albums;
         private bool _isExpanded;
         private AlbumGroupViewModel? _selectedAlbum;
+        private static readonly IReadOnlyList<AlbumGroupViewModel> EmptyAlbums = Array.Empty<AlbumGroupViewModel>();
 
         public ArtistGroupViewModel(long artistId, string name)
         {
@@ -979,12 +1341,30 @@ public partial class MainWindowViewModel : ViewModelBase
 
         public long ArtistId { get; }
         public string Name { get; }
-        public ObservableCollection<AlbumGroupViewModel> Albums { get; } = new();
+        public ObservableCollection<AlbumGroupViewModel> Albums
+        {
+            get
+            {
+                EnsureAlbumsMaterialized();
+                return _albums!;
+            }
+        }
+        public int AlbumCount => _albumSeeds.Count;
 
         public bool IsExpanded
         {
             get => _isExpanded;
-            set => SetProperty(ref _isExpanded, value);
+            set
+            {
+                if (SetProperty(ref _isExpanded, value))
+                {
+                    if (value)
+                    {
+                        EnsureAlbumsMaterialized();
+                    }
+                    OnPropertyChanged(nameof(VisibleAlbums));
+                }
+            }
         }
 
         public AlbumGroupViewModel? SelectedAlbum
@@ -1000,12 +1380,38 @@ public partial class MainWindowViewModel : ViewModelBase
         }
 
         public bool HasSelectedAlbum => SelectedAlbum != null;
+        public IReadOnlyList<AlbumGroupViewModel> VisibleAlbums => IsExpanded ? Albums : EmptyAlbums;
+
+        public void AddAlbumSeed(long albumId, string title, int trackCount)
+        {
+            _albumSeeds.Add(new ArtistAlbumSeed(albumId, title, trackCount));
+        }
 
         public void ToggleSelectedAlbum(AlbumGroupViewModel album)
         {
             IsExpanded = true;
             SelectedAlbum = ReferenceEquals(SelectedAlbum, album) ? null : album;
         }
+
+        private void EnsureAlbumsMaterialized()
+        {
+            if (_albums != null)
+            {
+                return;
+            }
+
+            var stopwatch = Stopwatch.StartNew();
+            Console.WriteLine($"[Artists][Expand] Materializing albums for '{Name}' (artistId={ArtistId}, count={_albumSeeds.Count})");
+            _albums = new ObservableCollection<AlbumGroupViewModel>();
+            foreach (var seed in _albumSeeds)
+            {
+                _albums.Add(new AlbumGroupViewModel(this, seed.AlbumId, seed.Title, seed.TrackCount));
+            }
+            stopwatch.Stop();
+            Console.WriteLine($"[Artists][Expand] Materialized albums for '{Name}' in {stopwatch.ElapsedMilliseconds} ms (mem={GC.GetTotalMemory(false) / (1024 * 1024)} MB)");
+        }
+
+        private readonly record struct ArtistAlbumSeed(long AlbumId, string Title, int TrackCount);
     }
 
     public sealed class AlbumGroupViewModel : ViewModelBase
@@ -1030,6 +1436,50 @@ public partial class MainWindowViewModel : ViewModelBase
             private set => SetProperty(ref _trackCount, value);
         }
         public bool IsTracksLoaded { get; private set; }
+
+        public void SetTracks(List<TrackRowViewModel> tracks)
+        {
+            Tracks.Clear();
+            Tracks.AddRange(tracks);
+            TrackCount = Tracks.Count;
+            IsTracksLoaded = true;
+            OnPropertyChanged(nameof(Tracks));
+        }
+    }
+
+    public sealed class AlbumBrowserItemViewModel : ViewModelBase
+    {
+        private int _trackCount;
+        private bool _isExpanded;
+
+        public AlbumBrowserItemViewModel(long albumId, string title, string artistName, int? releaseYear, int trackCount)
+        {
+            AlbumId = albumId;
+            Title = string.IsNullOrWhiteSpace(title) ? "Unknown Album" : title;
+            ArtistName = string.IsNullOrWhiteSpace(artistName) ? "Unknown Artist" : artistName;
+            ReleaseYear = releaseYear;
+            _trackCount = trackCount;
+        }
+
+        public long AlbumId { get; }
+        public string Title { get; }
+        public string ArtistName { get; }
+        public int? ReleaseYear { get; }
+        public string YearText => ReleaseYear?.ToString() ?? "-";
+        public List<TrackRowViewModel> Tracks { get; } = new();
+        public bool IsTracksLoaded { get; private set; }
+
+        public int TrackCount
+        {
+            get => _trackCount;
+            private set => SetProperty(ref _trackCount, value);
+        }
+
+        public bool IsExpanded
+        {
+            get => _isExpanded;
+            set => SetProperty(ref _isExpanded, value);
+        }
 
         public void SetTracks(List<TrackRowViewModel> tracks)
         {

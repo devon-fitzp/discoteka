@@ -1109,7 +1109,7 @@ FROM {table};";
 
         foreach (var match in matches)
         {
-            var trackId = ResolveTrackId(match, trackIndex, ref nextTrackId);
+            var trackId = ResolveTrackId(connection, transaction, match, trackIndex, ref nextTrackId);
             if (trackId == null)
             {
                 continue;
@@ -1137,7 +1137,7 @@ FROM {table};";
 
             var trackId = nextTrackId++;
             InsertAppleOnly(connection, transaction, trackId, apple);
-            trackIndex.Update(trackId, apple.Id, null, null);
+            trackIndex.Update(trackId, apple.Id, null, null, null);
         }
 
         trackIndex.NextTrackId = nextTrackId;
@@ -1158,7 +1158,7 @@ FROM {table};";
 
             var trackId = nextTrackId++;
             InsertRekordboxOnly(connection, transaction, trackId, rekordbox);
-            trackIndex.Update(trackId, null, rekordbox.Id, null);
+            trackIndex.Update(trackId, null, rekordbox.Id, null, null);
         }
 
         trackIndex.NextTrackId = nextTrackId;
@@ -1180,7 +1180,7 @@ FROM {table};";
 
             var trackId = nextTrackId++;
             InsertFileOnly(connection, transaction, trackId, file);
-            trackIndex.Update(trackId, null, null, file.Path);
+            trackIndex.Update(trackId, null, null, file.Id, file.Path);
         }
 
         trackIndex.NextTrackId = nextTrackId;
@@ -1400,16 +1400,32 @@ VALUES (
         link.ExecuteNonQuery();
     }
 
-    private static long? ResolveTrackId(MatchCandidate match, TrackIndex index, ref long nextTrackId)
+    private static long? ResolveTrackId(SqliteConnection connection, SqliteTransaction transaction, MatchCandidate match, TrackIndex index, ref long nextTrackId)
     {
-        if (TryGetTrackId(index, match.A, out var trackId))
+        var hasA = TryGetTrackId(index, match.A, out var trackIdA);
+        var hasB = TryGetTrackId(index, match.B, out var trackIdB);
+
+        if (hasA && hasB)
         {
-            return trackId;
+            if (trackIdA == trackIdB)
+            {
+                return trackIdA;
+            }
+
+            var winner = Math.Min(trackIdA, trackIdB);
+            var loser = Math.Max(trackIdA, trackIdB);
+            MergeTrackRows(connection, transaction, winner, loser, index);
+            return winner;
         }
 
-        if (TryGetTrackId(index, match.B, out trackId))
+        if (hasA)
         {
-            return trackId;
+            return trackIdA;
+        }
+
+        if (hasB)
+        {
+            return trackIdB;
         }
 
         var newId = nextTrackId++;
@@ -1425,6 +1441,11 @@ VALUES (
         }
 
         if (row.Source == "Rekordbox" && index.ByRekordbox.TryGetValue(row.Id, out trackId))
+        {
+            return true;
+        }
+
+        if (row.Source == "FileLibrary" && index.ByFileId.TryGetValue(row.Id, out trackId))
         {
             return true;
         }
@@ -1548,7 +1569,7 @@ WHERE TrackId = $trackId;";
         command.Parameters.AddWithValue("$djTags", (object?)djTags ?? DBNull.Value);
         command.ExecuteNonQuery();
 
-        index.Update(trackId, apple?.Id, rekordbox?.Id, filePath);
+        index.Update(trackId, apple?.Id, rekordbox?.Id, file?.Id, filePath);
     }
 
     private static void InsertLink(SqliteConnection connection, SqliteTransaction transaction, MatchRow row, long trackId)
@@ -1582,20 +1603,181 @@ WHERE TrackId = $trackId;";
         command.ExecuteNonQuery();
     }
 
+    private static void MergeTrackRows(SqliteConnection connection, SqliteTransaction transaction, long winnerTrackId, long loserTrackId, TrackIndex index)
+    {
+        Console.WriteLine($"[Match] Merging duplicate TrackLibrary rows {loserTrackId} -> {winnerTrackId}");
+
+        string? loserApple = null;
+        string? loserRekordbox = null;
+        string? loserFilePath = null;
+        var loserFileIds = new List<string>();
+        var loserAppleIds = new List<string>();
+        var loserRekordboxIds = new List<string>();
+
+        using (var readLoser = connection.CreateCommand())
+        {
+            readLoser.Transaction = transaction;
+            readLoser.CommandText = "SELECT AppleMusicId, RekordboxId, FilePath FROM TrackLibrary WHERE TrackId = $trackId;";
+            readLoser.Parameters.AddWithValue("$trackId", loserTrackId);
+            using var reader = readLoser.ExecuteReader();
+            if (reader.Read())
+            {
+                loserApple = reader.IsDBNull(0) ? null : reader.GetString(0);
+                loserRekordbox = reader.IsDBNull(1) ? null : reader.GetString(1);
+                loserFilePath = reader.IsDBNull(2) ? null : reader.GetString(2);
+            }
+        }
+
+        using (var readLinks = connection.CreateCommand())
+        {
+            readLinks.Transaction = transaction;
+            readLinks.CommandText = @"
+SELECT 'A', AppleMusicId FROM TrackToApple WHERE TrackId = $trackId
+UNION ALL
+SELECT 'R', RekordboxId FROM TrackToRekordbox WHERE TrackId = $trackId
+UNION ALL
+SELECT 'F', CAST(FileId AS TEXT) FROM TrackToFile WHERE TrackId = $trackId;";
+            readLinks.Parameters.AddWithValue("$trackId", loserTrackId);
+            using var reader = readLinks.ExecuteReader();
+            while (reader.Read())
+            {
+                var kind = reader.IsDBNull(0) ? null : reader.GetString(0);
+                var id = reader.IsDBNull(1) ? null : reader.GetString(1);
+                if (string.IsNullOrWhiteSpace(kind) || string.IsNullOrWhiteSpace(id))
+                {
+                    continue;
+                }
+
+                switch (kind)
+                {
+                    case "A":
+                        loserAppleIds.Add(id);
+                        break;
+                    case "R":
+                        loserRekordboxIds.Add(id);
+                        break;
+                    case "F":
+                        loserFileIds.Add(id);
+                        break;
+                }
+            }
+        }
+
+        using (var mergeWinner = connection.CreateCommand())
+        {
+            mergeWinner.Transaction = transaction;
+            mergeWinner.CommandText = @"
+UPDATE TrackLibrary
+SET TrackTitle = COALESCE(TrackTitle, (SELECT TrackTitle FROM TrackLibrary WHERE TrackId = $loserId)),
+    TrackArtist = COALESCE(TrackArtist, (SELECT TrackArtist FROM TrackLibrary WHERE TrackId = $loserId)),
+    TrackTitleRaw = COALESCE(TrackTitleRaw, (SELECT TrackTitleRaw FROM TrackLibrary WHERE TrackId = $loserId)),
+    TrackArtistRaw = COALESCE(TrackArtistRaw, (SELECT TrackArtistRaw FROM TrackLibrary WHERE TrackId = $loserId)),
+    AlbumTitle = COALESCE(AlbumTitle, (SELECT AlbumTitle FROM TrackLibrary WHERE TrackId = $loserId)),
+    AlbumArtist = COALESCE(AlbumArtist, (SELECT AlbumArtist FROM TrackLibrary WHERE TrackId = $loserId)),
+    TrackNumber = COALESCE(TrackNumber, (SELECT TrackNumber FROM TrackLibrary WHERE TrackId = $loserId)),
+    Genre = COALESCE(Genre, (SELECT Genre FROM TrackLibrary WHERE TrackId = $loserId)),
+    Duration = COALESCE(Duration, (SELECT Duration FROM TrackLibrary WHERE TrackId = $loserId)),
+    Plays = COALESCE(Plays, (SELECT Plays FROM TrackLibrary WHERE TrackId = $loserId)),
+    AppleMusicId = COALESCE(AppleMusicId, (SELECT AppleMusicId FROM TrackLibrary WHERE TrackId = $loserId)),
+    RekordboxId = COALESCE(RekordboxId, (SELECT RekordboxId FROM TrackLibrary WHERE TrackId = $loserId)),
+    FilePath = COALESCE(FilePath, (SELECT FilePath FROM TrackLibrary WHERE TrackId = $loserId)),
+    MusicalKey = COALESCE(MusicalKey, (SELECT MusicalKey FROM TrackLibrary WHERE TrackId = $loserId)),
+    BPM = COALESCE(BPM, (SELECT BPM FROM TrackLibrary WHERE TrackId = $loserId)),
+    Features = COALESCE(Features, (SELECT Features FROM TrackLibrary WHERE TrackId = $loserId)),
+    DjTags = COALESCE(DjTags, (SELECT DjTags FROM TrackLibrary WHERE TrackId = $loserId))
+WHERE TrackId = $winnerId;";
+            mergeWinner.Parameters.AddWithValue("$winnerId", winnerTrackId);
+            mergeWinner.Parameters.AddWithValue("$loserId", loserTrackId);
+            mergeWinner.ExecuteNonQuery();
+        }
+
+        RepointLinkTable(connection, transaction, "TrackToApple", winnerTrackId, loserTrackId);
+        RepointLinkTable(connection, transaction, "TrackToRekordbox", winnerTrackId, loserTrackId);
+        RepointLinkTable(connection, transaction, "TrackToFile", winnerTrackId, loserTrackId);
+
+        using (var updateRecent = connection.CreateCommand())
+        {
+            updateRecent.Transaction = transaction;
+            updateRecent.CommandText = "UPDATE RecentActivity SET TrackId = $winnerId WHERE TrackId = $loserId;";
+            updateRecent.Parameters.AddWithValue("$winnerId", winnerTrackId);
+            updateRecent.Parameters.AddWithValue("$loserId", loserTrackId);
+            updateRecent.ExecuteNonQuery();
+        }
+
+        using (var updateAlbumToTrack = connection.CreateCommand())
+        {
+            updateAlbumToTrack.Transaction = transaction;
+            updateAlbumToTrack.CommandText = "UPDATE OR IGNORE AlbumToTrack SET TrackId = $winnerId WHERE TrackId = $loserId;";
+            updateAlbumToTrack.Parameters.AddWithValue("$winnerId", winnerTrackId);
+            updateAlbumToTrack.Parameters.AddWithValue("$loserId", loserTrackId);
+            updateAlbumToTrack.ExecuteNonQuery();
+        }
+        using (var deleteAlbumToTrackDupes = connection.CreateCommand())
+        {
+            deleteAlbumToTrackDupes.Transaction = transaction;
+            deleteAlbumToTrackDupes.CommandText = "DELETE FROM AlbumToTrack WHERE TrackId = $loserId;";
+            deleteAlbumToTrackDupes.Parameters.AddWithValue("$loserId", loserTrackId);
+            deleteAlbumToTrackDupes.ExecuteNonQuery();
+        }
+
+        using (var deleteLoser = connection.CreateCommand())
+        {
+            deleteLoser.Transaction = transaction;
+            deleteLoser.CommandText = "DELETE FROM TrackLibrary WHERE TrackId = $loserId;";
+            deleteLoser.Parameters.AddWithValue("$loserId", loserTrackId);
+            deleteLoser.ExecuteNonQuery();
+        }
+
+        index.Update(winnerTrackId, loserApple, loserRekordbox, null, loserFilePath);
+        foreach (var appleId in loserAppleIds)
+        {
+            index.Update(winnerTrackId, appleId, null, null, null);
+        }
+
+        foreach (var rekordboxId in loserRekordboxIds)
+        {
+            index.Update(winnerTrackId, null, rekordboxId, null, null);
+        }
+
+        foreach (var fileId in loserFileIds)
+        {
+            index.Update(winnerTrackId, null, null, fileId, null);
+        }
+    }
+
+    private static void RepointLinkTable(SqliteConnection connection, SqliteTransaction transaction, string tableName, long winnerTrackId, long loserTrackId)
+    {
+        using (var update = connection.CreateCommand())
+        {
+            update.Transaction = transaction;
+            update.CommandText = $"UPDATE OR IGNORE {tableName} SET TrackId = $winnerId WHERE TrackId = $loserId;";
+            update.Parameters.AddWithValue("$winnerId", winnerTrackId);
+            update.Parameters.AddWithValue("$loserId", loserTrackId);
+            update.ExecuteNonQuery();
+        }
+
+        using var delete = connection.CreateCommand();
+        delete.Transaction = transaction;
+        delete.CommandText = $"DELETE FROM {tableName} WHERE TrackId = $loserId;";
+        delete.Parameters.AddWithValue("$loserId", loserTrackId);
+        delete.ExecuteNonQuery();
+    }
+
     private sealed class TrackIndex
     {
         public Dictionary<string, long> ByApple { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, long> ByRekordbox { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, long> ByFileId { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, long> ByFilePath { get; } = new(StringComparer.OrdinalIgnoreCase);
         public long NextTrackId { get; set; }
 
         public void AddNew(long trackId, MatchRow a, MatchRow b)
         {
-            Update(trackId, a.Source == "AppleLibrary" ? a.Id : null, a.Source == "Rekordbox" ? a.Id : null, a.Path);
-            Update(trackId, b.Source == "AppleLibrary" ? b.Id : null, b.Source == "Rekordbox" ? b.Id : null, b.Path);
+            Update(trackId, a.Source == "AppleLibrary" ? a.Id : null, a.Source == "Rekordbox" ? a.Id : null, a.Source == "FileLibrary" ? a.Id : null, a.Path);
+            Update(trackId, b.Source == "AppleLibrary" ? b.Id : null, b.Source == "Rekordbox" ? b.Id : null, b.Source == "FileLibrary" ? b.Id : null, b.Path);
         }
 
-        public void Update(long trackId, string? appleId, string? rekordboxId, string? filePath)
+        public void Update(long trackId, string? appleId, string? rekordboxId, string? fileId, string? filePath)
         {
             if (!string.IsNullOrWhiteSpace(appleId))
             {
@@ -1605,6 +1787,11 @@ WHERE TrackId = $trackId;";
             if (!string.IsNullOrWhiteSpace(rekordboxId))
             {
                 ByRekordbox[rekordboxId] = trackId;
+            }
+
+            if (!string.IsNullOrWhiteSpace(fileId))
+            {
+                ByFileId[fileId] = trackId;
             }
 
             var pathKey = NormalizePath(filePath);
@@ -1636,7 +1823,31 @@ WHERE TrackId = $trackId;";
                 maxId = trackId;
             }
 
-            index.Update(trackId, appleId, rekordboxId, filePath);
+            index.Update(trackId, appleId, rekordboxId, null, filePath);
+        }
+
+        using (var linkCommand = connection.CreateCommand())
+        {
+            linkCommand.CommandText = @"
+SELECT t.TrackId, ta.AppleMusicId, tr.RekordboxId, CAST(tf.FileId AS TEXT) AS FileId, f.Path
+FROM TrackLibrary t
+LEFT JOIN TrackToApple ta ON ta.TrackId = t.TrackId
+LEFT JOIN TrackToRekordbox tr ON tr.TrackId = t.TrackId
+LEFT JOIN TrackToFile tf ON tf.TrackId = t.TrackId
+LEFT JOIN FileLibrary f ON f.FileId = tf.FileId;";
+            using var linkReader = linkCommand.ExecuteReader();
+            while (linkReader.Read())
+            {
+                var trackId = linkReader.IsDBNull(0) ? 0 : linkReader.GetInt64(0);
+                var appleId = linkReader.IsDBNull(1) ? null : linkReader.GetString(1);
+                var rekordboxId = linkReader.IsDBNull(2) ? null : linkReader.GetString(2);
+                var fileId = linkReader.IsDBNull(3) ? null : linkReader.GetString(3);
+                var filePath = linkReader.IsDBNull(4) ? null : linkReader.GetString(4);
+                if (trackId > 0)
+                {
+                    index.Update(trackId, appleId, rekordboxId, fileId, filePath);
+                }
+            }
         }
 
         index.NextTrackId = maxId + 1;
@@ -1681,7 +1892,7 @@ WHERE TrackId = $trackId;";
     {
         var seconds = durationsMs
             .Where(value => value.HasValue)
-            .Select(value => value.Value / 1000)
+            .Select(value => value.GetValueOrDefault() / 1000)
             .OrderBy(value => value)
             .ToList();
 

@@ -163,6 +163,15 @@ VALUES (
     private static IEnumerable<string> EnumerateAudioFiles(string rootPath)
     {
         return Directory.EnumerateFiles(rootPath, "*.*", SearchOption.AllDirectories)
-            .Where(path => SupportedExtensions.Contains(Path.GetExtension(path)));
+            .Where(path =>
+            {
+                var fileName = Path.GetFileName(path);
+                if (fileName.StartsWith("._", StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                return SupportedExtensions.Contains(Path.GetExtension(path));
+            });
     }
 }

@@ -32,13 +32,33 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
         _mediaPlayer.EnableHardwareDecoding = true;
         _mediaPlayer.Volume = 70;
 
-        _mediaPlayer.Playing += (_, _) => EmitState();
-        _mediaPlayer.Paused += (_, _) => EmitState();
-        _mediaPlayer.Stopped += (_, _) => EmitState();
+        _mediaPlayer.Playing += (_, _) =>
+        {
+            Console.WriteLine($"[PlaybackSvc] Event Playing (idx={_currentQueueIndex}, track={DescribeTrack(_currentTrack)})");
+            EmitState();
+        };
+        _mediaPlayer.Paused += (_, _) =>
+        {
+            Console.WriteLine($"[PlaybackSvc] Event Paused (idx={_currentQueueIndex}, track={DescribeTrack(_currentTrack)})");
+            EmitState();
+        };
+        _mediaPlayer.Stopped += (_, _) =>
+        {
+            Console.WriteLine($"[PlaybackSvc] Event Stopped (idx={_currentQueueIndex}, track={DescribeTrack(_currentTrack)})");
+            EmitState();
+        };
         _mediaPlayer.TimeChanged += (_, _) => EmitState();
         _mediaPlayer.LengthChanged += (_, _) => EmitState();
-        _mediaPlayer.EndReached += (_, _) => PlaybackEnded?.Invoke();
-        _mediaPlayer.EncounteredError += (_, _) => PlaybackError?.Invoke("Playback error.");
+        _mediaPlayer.EndReached += (_, _) =>
+        {
+            Console.WriteLine($"[PlaybackSvc] Event EndReached (idx={_currentQueueIndex}, track={DescribeTrack(_currentTrack)})");
+            PlaybackEnded?.Invoke();
+        };
+        _mediaPlayer.EncounteredError += (_, _) =>
+        {
+            Console.Error.WriteLine($"[PlaybackSvc] Event EncounteredError (idx={_currentQueueIndex}, track={DescribeTrack(_currentTrack)})");
+            PlaybackError?.Invoke("Playback error.");
+        };
     }
 
     public event Action<PlaybackState>? PlaybackStateChanged;
@@ -72,29 +92,39 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
             ? -1
             : Math.Clamp(startIndex, 0, _queue.Count - 1);
 
+        Console.WriteLine($"[PlaybackSvc] SetQueue count={_queue.Count}, requestedStart={startIndex}, actualStart={_currentQueueIndex}");
+        if (_queue.Count > 0)
+        {
+            Console.WriteLine($"[PlaybackSvc] Queue head={DescribeTrack(_queue[0])}, current={DescribeTrack(_queue[_currentQueueIndex])}");
+        }
         QueueChanged?.Invoke(_queue, _currentQueueIndex);
     }
 
     public bool Play(PlaybackTrack track)
     {
         ThrowIfDisposed();
+        Console.WriteLine($"[PlaybackSvc] Play requested: {DescribeTrack(track)}");
 
         if (string.IsNullOrWhiteSpace(track.FilePath))
         {
+            Console.Error.WriteLine($"[PlaybackSvc] Play rejected (no file path): {DescribeTrack(track)}");
             PlaybackError?.Invoke("No local file!");
             return false;
         }
 
         if (!File.Exists(track.FilePath))
         {
+            Console.Error.WriteLine($"[PlaybackSvc] Play rejected (missing file): {track.FilePath}");
             PlaybackError?.Invoke("No local file!");
             return false;
         }
 
+        Console.WriteLine($"[PlaybackSvc] Disposing current media before play");
         DisposeCurrentMedia();
 
         _currentMedia = new Media(_libVlc, new Uri(track.FilePath));
         var started = _mediaPlayer.Play(_currentMedia);
+        Console.WriteLine($"[PlaybackSvc] MediaPlayer.Play returned {started} for {DescribeTrack(track)}");
         if (!started)
         {
             PlaybackError?.Invoke("Unable to start playback.");
@@ -110,13 +140,16 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
     public bool PlayAtIndex(int index)
     {
         ThrowIfDisposed();
+        Console.WriteLine($"[PlaybackSvc] PlayAtIndex requested index={index} queueCount={_queue.Count}");
 
         if (index < 0 || index >= _queue.Count)
         {
+            Console.Error.WriteLine($"[PlaybackSvc] PlayAtIndex rejected index={index}");
             return false;
         }
 
         _currentQueueIndex = index;
+        Console.WriteLine($"[PlaybackSvc] Current queue index set to {_currentQueueIndex} ({DescribeTrack(_queue[index])})");
         QueueChanged?.Invoke(_queue, _currentQueueIndex);
         return Play(_queue[index]);
     }
@@ -124,6 +157,7 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
     public bool PlayNext()
     {
         ThrowIfDisposed();
+        Console.WriteLine($"[PlaybackSvc] PlayNext (queueCount={_queue.Count}, currentIdx={_currentQueueIndex}, shuffle={_shuffleEnabled}, repeat={_repeatMode})");
 
         if (_queue.Count == 0)
         {
@@ -132,12 +166,14 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
 
         if (_repeatMode == RepeatMode.Track && _currentQueueIndex >= 0 && _currentQueueIndex < _queue.Count)
         {
+            Console.WriteLine("[PlaybackSvc] PlayNext using Repeat.Track");
             return PlayAtIndex(_currentQueueIndex);
         }
 
         if (_shuffleEnabled && _queue.Count > 1)
         {
             var shuffleIndex = ShuffleChooseNextTrack(_currentQueueIndex, _queue.Count);
+            Console.WriteLine($"[PlaybackSvc] PlayNext shuffle chose index={shuffleIndex}");
             if (shuffleIndex >= 0 && shuffleIndex < _queue.Count)
             {
                 return PlayAtIndex(shuffleIndex);
@@ -150,19 +186,23 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
             if (_repeatMode == RepeatMode.Playlist)
             {
                 nextIndex = 0;
+                Console.WriteLine("[PlaybackSvc] PlayNext wrapped to start due to Repeat.Playlist");
             }
             else
             {
+                Console.WriteLine("[PlaybackSvc] PlayNext reached end of queue with no wrap");
                 return false;
             }
         }
 
+        Console.WriteLine($"[PlaybackSvc] PlayNext moving to index={nextIndex}");
         return PlayAtIndex(nextIndex);
     }
 
     public bool PlayPrevious()
     {
         ThrowIfDisposed();
+        Console.WriteLine($"[PlaybackSvc] PlayPrevious (queueCount={_queue.Count}, currentIdx={_currentQueueIndex}, repeat={_repeatMode})");
 
         if (_queue.Count == 0)
         {
@@ -175,19 +215,23 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
             if (_repeatMode == RepeatMode.Playlist)
             {
                 previousIndex = _queue.Count - 1;
+                Console.WriteLine("[PlaybackSvc] PlayPrevious wrapped to end due to Repeat.Playlist");
             }
             else
             {
+                Console.WriteLine("[PlaybackSvc] PlayPrevious reached start of queue with no wrap");
                 return false;
             }
         }
 
+        Console.WriteLine($"[PlaybackSvc] PlayPrevious moving to index={previousIndex}");
         return PlayAtIndex(previousIndex);
     }
 
     public void Pause()
     {
         ThrowIfDisposed();
+        Console.WriteLine($"[PlaybackSvc] Pause requested (idx={_currentQueueIndex}, track={DescribeTrack(_currentTrack)})");
         _mediaPlayer.Pause();
         EmitState();
     }
@@ -195,6 +239,7 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
     public void Resume()
     {
         ThrowIfDisposed();
+        Console.WriteLine($"[PlaybackSvc] Resume requested (idx={_currentQueueIndex}, track={DescribeTrack(_currentTrack)})");
         _mediaPlayer.SetPause(false);
         EmitState();
     }
@@ -202,6 +247,7 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
     public void Stop()
     {
         ThrowIfDisposed();
+        Console.WriteLine($"[PlaybackSvc] Stop requested (idx={_currentQueueIndex}, track={DescribeTrack(_currentTrack)})");
         _mediaPlayer.Stop();
         EmitState();
     }
@@ -211,8 +257,10 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
         ThrowIfDisposed();
 
         var duration = _mediaPlayer.Length;
+        Console.WriteLine($"[PlaybackSvc] Seek requested to {positionMs} ms (duration={duration})");
         if (duration <= 0)
         {
+            Console.WriteLine("[PlaybackSvc] Seek ignored (duration unavailable)");
             return;
         }
 
@@ -224,6 +272,7 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
     {
         ThrowIfDisposed();
 
+        Console.WriteLine($"[PlaybackSvc] SetVolume {volume}");
         _mediaPlayer.Volume = Math.Clamp(volume, 0, 100);
         EmitState();
     }
@@ -233,6 +282,7 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
         ThrowIfDisposed();
 
         _shuffleEnabled = enabled;
+        Console.WriteLine($"[PlaybackSvc] SetShuffle {_shuffleEnabled}");
         EmitState();
     }
 
@@ -241,6 +291,7 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
         ThrowIfDisposed();
 
         _repeatMode = repeatMode;
+        Console.WriteLine($"[PlaybackSvc] SetRepeatMode {_repeatMode}");
         EmitState();
     }
 
@@ -289,8 +340,22 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
 
     private void DisposeCurrentMedia()
     {
+        if (_currentMedia != null)
+        {
+            Console.WriteLine("[PlaybackSvc] Disposing current media");
+        }
         _currentMedia?.Dispose();
         _currentMedia = null;
+    }
+
+    private static string DescribeTrack(PlaybackTrack? track)
+    {
+        if (track == null)
+        {
+            return "<null>";
+        }
+
+        return $"id={track.TrackId}, title='{track.Title}', artist='{track.Artist}', path={(string.IsNullOrWhiteSpace(track.FilePath) ? "<none>" : track.FilePath)}";
     }
 
     private void ThrowIfDisposed()

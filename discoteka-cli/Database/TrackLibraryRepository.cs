@@ -81,15 +81,30 @@ VALUES ($trackId, $playedAtUtc);";
         await using var connection = new SqliteConnection(DbPaths.BuildConnectionString(_dbPath));
         await connection.OpenAsync(cancellationToken);
 
-        var localWhere = requireLocalFile switch
-        {
-            true => "t.FilePath IS NOT NULL AND TRIM(t.FilePath) <> ''",
-            false => "(t.FilePath IS NULL OR TRIM(t.FilePath) = '')",
-            _ => "1=1"
-        };
-
         await using var command = connection.CreateCommand();
-        command.CommandText = $@"
+        if (requireLocalFile is null)
+        {
+            command.CommandText = @"
+SELECT
+    ar.ArtistId,
+    ar.ArtistName,
+    al.AlbumId,
+    al.AlbumTitle,
+    al.AlbumArtistName,
+    al.ReleaseYear,
+    al.TrackCount AS AlbumTrackCount
+FROM ArtistToAlbum aa
+JOIN TrackArtists ar ON ar.ArtistId = aa.ArtistId
+JOIN TrackAlbums al ON al.AlbumId = aa.AlbumId
+ORDER BY ar.ArtistName COLLATE NOCASE, al.AlbumTitle COLLATE NOCASE;";
+        }
+        else
+        {
+            var localWhere = requireLocalFile.Value
+                ? "t.FilePath IS NOT NULL AND TRIM(t.FilePath) <> ''"
+                : "(t.FilePath IS NULL OR TRIM(t.FilePath) = '')";
+
+            command.CommandText = $@"
 SELECT
     ar.ArtistId,
     ar.ArtistName,
@@ -98,14 +113,15 @@ SELECT
     al.AlbumArtistName,
     al.ReleaseYear,
     COUNT(DISTINCT at.TrackId) AS AlbumTrackCount
-FROM TrackArtists ar
-JOIN ArtistToAlbum aa ON aa.ArtistId = ar.ArtistId
+FROM ArtistToAlbum aa
+JOIN TrackArtists ar ON ar.ArtistId = aa.ArtistId
 JOIN TrackAlbums al ON al.AlbumId = aa.AlbumId
 JOIN AlbumToTrack at ON at.AlbumId = al.AlbumId
 JOIN TrackLibrary t ON t.TrackId = at.TrackId
 WHERE {localWhere}
 GROUP BY ar.ArtistId, ar.ArtistName, al.AlbumId, al.AlbumTitle, al.AlbumArtistName, al.ReleaseYear
 ORDER BY ar.ArtistName COLLATE NOCASE, al.AlbumTitle COLLATE NOCASE;";
+        }
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
