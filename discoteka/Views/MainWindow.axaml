@@ -40,6 +40,41 @@
         </Style>
     </Window.Styles>
 
+    <Window.Styles>
+        <!-- Nav button base style -->
+        <Style Selector="Button.navItem">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Padding" Value="10,7"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+        </Style>
+        <Style Selector="Button.navItem:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource PanelBorder}"/>
+        </Style>
+        <Style Selector="Button.navItem.active /template/ ContentPresenter">
+            <Setter Property="Background" Value="#2E4C8DFF"/>
+        </Style>
+        <Style Selector="Button.navItem.active">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimary}"/>
+        </Style>
+
+        <!-- Track list row hover/selection -->
+        <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#0A4C8DFF"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="#1F4C8DFF"/>
+        </Style>
+        <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#2A4C8DFF"/>
+        </Style>
+        <Style Selector="ListBoxItem:nth-child(even) /template/ ContentPresenter">
+            <Setter Property="Background" Value="#08FFFFFF"/>
+        </Style>
+    </Window.Styles>
+
     <Grid Background="{DynamicResource AppBg}" RowDefinitions="Auto,*,Auto" ColumnDefinitions="240,*">
         <Border Grid.Row="0" Grid.ColumnSpan="2" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource PanelBorder}" BorderThickness="0,0,0,1" Padding="14,10">
             <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
@@ -57,6 +92,13 @@
                             <MenuItem Header="Default Sort: Title (A-Z)" Click="OnDefaultSortTitleClick"/>
                             <MenuItem Header="Default Sort: Artist (A-Z)" Click="OnDefaultSortArtistClick"/>
                             <MenuItem Header="Default Sort: Recently Added" Click="OnDefaultSortRecentlyAddedClick"/>
+                            <Separator/>
+                            <MenuItem Header="Color Scheme">
+                                <MenuItem Header="Midnight" Click="OnThemeMidnightClick"/>
+                                <MenuItem Header="Obsidian" Click="OnThemeObsidianClick"/>
+                                <MenuItem Header="Forest" Click="OnThemeForestClick"/>
+                                <MenuItem Header="Rose" Click="OnThemeRoseClick"/>
+                            </MenuItem>
                         </MenuFlyout>
                     </Button.Flyout>
                 </Button>
@@ -79,30 +121,30 @@
                     <StackPanel Spacing="8">
                         <TextBlock Text="LIBRARY" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold"/>
                         <StackPanel Spacing="4">
-                            <Button HorizontalAlignment="Stretch" Content="All Music" Click="OnAllMusicViewClick"/>
-                            <Button HorizontalAlignment="Stretch" Content="Artists" Click="OnArtistsViewClick"/>
-                            <Button HorizontalAlignment="Stretch" Content="Albums" Click="OnAlbumsViewClick"/>
-                            <Button HorizontalAlignment="Stretch" Content="Genres"/>
+                            <Button x:Name="NavAllMusic" Classes="navItem" HorizontalAlignment="Stretch" Content="All Music" Click="OnAllMusicViewClick"/>
+                            <Button x:Name="NavArtists" Classes="navItem" HorizontalAlignment="Stretch" Content="Artists" Click="OnArtistsViewClick"/>
+                            <Button x:Name="NavAlbums" Classes="navItem" HorizontalAlignment="Stretch" Content="Albums" Click="OnAlbumsViewClick"/>
+                            <Button Classes="navItem" HorizontalAlignment="Stretch" Content="Genres"/>
                         </StackPanel>
                     </StackPanel>
 
                     <StackPanel Spacing="8">
                         <TextBlock Text="SMART FILTERS" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold"/>
                         <StackPanel Spacing="4">
-                            <Button HorizontalAlignment="Stretch" Content="All Tracks" Click="OnFilterAllTracksClick"/>
-                            <Button HorizontalAlignment="Stretch" Content="Available Locally" Click="OnFilterAvailableLocallyClick"/>
-                            <Button HorizontalAlignment="Stretch" Content="No Local File" Click="OnFilterNoLocalFileClick"/>
-                            <Button HorizontalAlignment="Stretch" Content="Recently Played"/>
+                            <Button Classes="navItem" HorizontalAlignment="Stretch" Content="All Tracks" Click="OnFilterAllTracksClick"/>
+                            <Button Classes="navItem" HorizontalAlignment="Stretch" Content="Available Locally" Click="OnFilterAvailableLocallyClick"/>
+                            <Button Classes="navItem" HorizontalAlignment="Stretch" Content="No Local File" Click="OnFilterNoLocalFileClick"/>
+                            <Button Classes="navItem" HorizontalAlignment="Stretch" Content="Recently Played"/>
                         </StackPanel>
                     </StackPanel>
 
                     <StackPanel Spacing="8">
                         <TextBlock Text="PLAYLISTS" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold"/>
                         <StackPanel Spacing="4">
-                            <Button HorizontalAlignment="Stretch" Content="Road Trip Mix"/>
-                            <Button HorizontalAlignment="Stretch" Content="Workout Power"/>
-                            <Button HorizontalAlignment="Stretch" Content="Late Night Jams"/>
-                            <Button HorizontalAlignment="Stretch" Content="Guitar Legends"/>
+                            <Button Classes="navItem" HorizontalAlignment="Stretch" Content="Road Trip Mix"/>
+                            <Button Classes="navItem" HorizontalAlignment="Stretch" Content="Workout Power"/>
+                            <Button Classes="navItem" HorizontalAlignment="Stretch" Content="Late Night Jams"/>
+                            <Button Classes="navItem" HorizontalAlignment="Stretch" Content="Guitar Legends"/>
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
@@ -438,9 +480,9 @@
         <Border Grid.Row="2" Grid.ColumnSpan="2" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource PanelBorder}" BorderThickness="0,1,0,0" Padding="16,10">
             <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
                 <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                    <Border Width="44" Height="44" Background="{DynamicResource PanelBgAlt}" CornerRadius="6"/>
+                    <Border Width="44" Height="44" Background="{DynamicResource PanelBgAlt}" BorderBrush="{DynamicResource PanelBorder}" BorderThickness="1" CornerRadius="8"/>
                     <StackPanel>
-                        <TextBlock Text="{Binding NowPlayingTitle}" Foreground="{DynamicResource TextPrimary}" FontSize="12"/>
+                        <TextBlock Text="{Binding NowPlayingTitle}" Foreground="{DynamicResource TextPrimary}" FontSize="12" FontWeight="SemiBold"/>
                         <TextBlock Text="{Binding NowPlayingTimeText}" Foreground="{DynamicResource TextMuted}" FontSize="11"/>
                         <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextMuted}" FontSize="11"/>
                     </StackPanel>
@@ -450,7 +492,7 @@
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10">
                         <Button Content="{Binding ShuffleButtonText}" Padding="10,4" Click="OnShuffleClick"/>
                         <Button Content="Prev" Padding="10,4" Click="OnPrevClick"/>
-                        <Button Content="{Binding PlayPauseButtonText}" Padding="14,6" Background="{DynamicResource Accent}" Click="OnPlayPauseClick"/>
+                        <Button Content="{Binding PlayPauseButtonText}" Padding="16,8" CornerRadius="20" Background="{DynamicResource Accent}" Click="OnPlayPauseClick"/>
                         <Button Content="Next" Padding="10,4" Click="OnNextClick"/>
                         <Button Content="{Binding RepeatButtonText}" Padding="10,4" Click="OnRepeatClick"/>
                     </StackPanel>

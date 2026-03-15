@@ -14,6 +14,9 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        var saved = ThemeService.LoadPreference();
+        ThemeService.ApplyTheme(this, saved);
+        UpdateActiveNavButton();
     }
 
     private MainWindowViewModel? ViewModel => DataContext as MainWindowViewModel;
@@ -106,6 +109,25 @@ public partial class MainWindow : Window
         await ViewModel.QueueRebuildIndexAsync();
     }
 
+    private void OnThemeMidnightClick(object? sender, RoutedEventArgs e) => ApplyAndSaveTheme("Midnight");
+    private void OnThemeObsidianClick(object? sender, RoutedEventArgs e) => ApplyAndSaveTheme("Obsidian");
+    private void OnThemeForestClick(object? sender, RoutedEventArgs e) => ApplyAndSaveTheme("Forest");
+    private void OnThemeRoseClick(object? sender, RoutedEventArgs e) => ApplyAndSaveTheme("Rose");
+
+    private void ApplyAndSaveTheme(string name)
+    {
+        var theme = ThemeDefinition.All.First(t => t.Name == name);
+        ThemeService.ApplyTheme(this, theme);
+        ThemeService.SavePreference(name);
+    }
+
+    private void UpdateActiveNavButton()
+    {
+        NavAllMusic.Classes.Set("active", ViewModel?.IsAllMusicView ?? true);
+        NavArtists.Classes.Set("active", ViewModel?.IsArtistsView ?? false);
+        NavAlbums.Classes.Set("active", ViewModel?.IsAlbumsView ?? false);
+    }
+
     private void OnSortTitleClick(object? sender, RoutedEventArgs e) => ViewModel?.CycleSortByTitle();
     private void OnSortArtistClick(object? sender, RoutedEventArgs e) => ViewModel?.CycleSortByArtist();
     private void OnSortAlbumClick(object? sender, RoutedEventArgs e) => ViewModel?.CycleSortByAlbum();
@@ -117,9 +139,9 @@ public partial class MainWindow : Window
     private void OnDefaultSortTitleClick(object? sender, RoutedEventArgs e) => ViewModel?.SetDefaultSort(MainWindowViewModel.DefaultSortOption.Title);
     private void OnDefaultSortArtistClick(object? sender, RoutedEventArgs e) => ViewModel?.SetDefaultSort(MainWindowViewModel.DefaultSortOption.Artist);
     private void OnDefaultSortRecentlyAddedClick(object? sender, RoutedEventArgs e) => ViewModel?.SetDefaultSort(MainWindowViewModel.DefaultSortOption.RecentlyAdded);
-    private void OnAllMusicViewClick(object? sender, RoutedEventArgs e) => ViewModel?.ShowAllMusicView();
-    private void OnArtistsViewClick(object? sender, RoutedEventArgs e) => ViewModel?.ShowArtistsView();
-    private void OnAlbumsViewClick(object? sender, RoutedEventArgs e) => ViewModel?.ShowAlbumsView();
+    private void OnAllMusicViewClick(object? sender, RoutedEventArgs e) { ViewModel?.ShowAllMusicView(); UpdateActiveNavButton(); }
+    private void OnArtistsViewClick(object? sender, RoutedEventArgs e) { ViewModel?.ShowArtistsView(); UpdateActiveNavButton(); }
+    private void OnAlbumsViewClick(object? sender, RoutedEventArgs e) { ViewModel?.ShowAlbumsView(); UpdateActiveNavButton(); }
     private void OnFilterAllTracksClick(object? sender, RoutedEventArgs e) => ViewModel?.ClearSmartFilter();
     private void OnFilterAvailableLocallyClick(object? sender, RoutedEventArgs e) => ViewModel?.ShowAvailableLocallyFilter();
     private void OnFilterNoLocalFileClick(object? sender, RoutedEventArgs e) => ViewModel?.ShowNoLocalFileFilter();
