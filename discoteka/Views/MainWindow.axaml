@@ -217,7 +217,7 @@
                                      Background="Transparent"
                                      BorderThickness="0">
                                 <ListBox.ItemTemplate>
-                                    <DataTemplate x:DataType="vm:MainWindowViewModel+ArtistGroupViewModel">
+                                    <DataTemplate x:DataType="vm:ArtistGroupViewModel">
                                         <Grid ColumnDefinitions="*,Auto" Margin="4,2" MinHeight="40">
                                             <StackPanel Spacing="1">
                                                 <TextBlock Text="{Binding Name}"
@@ -241,7 +241,7 @@
 
                     <ContentControl Grid.Column="1" Content="{Binding SelectedArtistGroup}">
                         <ContentControl.ContentTemplate>
-                            <DataTemplate x:DataType="vm:MainWindowViewModel+ArtistGroupViewModel">
+                            <DataTemplate x:DataType="vm:ArtistGroupViewModel">
                                 <StackPanel Spacing="10">
                                     <Border Background="{DynamicResource PanelBgAlt}" BorderBrush="{DynamicResource PanelBorder}" BorderThickness="1" CornerRadius="8" Padding="10">
                                         <Grid ColumnDefinitions="*,Auto">
@@ -256,7 +256,7 @@
                                         <ScrollViewer MaxHeight="280">
                                             <ItemsControl ItemsSource="{Binding Albums}">
                                                 <ItemsControl.ItemTemplate>
-                                                    <DataTemplate x:DataType="vm:MainWindowViewModel+AlbumGroupViewModel">
+                                                    <DataTemplate x:DataType="vm:AlbumGroupViewModel">
                                                         <Button Click="OnArtistAlbumTileClick"
                                                                 HorizontalAlignment="Stretch"
                                                                 Padding="8,6"
@@ -301,7 +301,7 @@
 
                                     <ContentControl Content="{Binding SelectedAlbum}">
                                         <ContentControl.ContentTemplate>
-                                            <DataTemplate x:DataType="vm:MainWindowViewModel+AlbumGroupViewModel">
+                                            <DataTemplate x:DataType="vm:AlbumGroupViewModel">
                                                 <Border Background="{DynamicResource PanelBgAlt}" BorderBrush="{DynamicResource PanelBorder}" BorderThickness="1" CornerRadius="8" Padding="10">
                                                     <StackPanel Spacing="8">
                                                         <Grid ColumnDefinitions="*,Auto">
@@ -347,7 +347,7 @@
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:MainWindowViewModel+AlbumBrowserItemViewModel">
+                                <DataTemplate x:DataType="vm:AlbumBrowserItemViewModel">
                                     <Border Classes="album-card"
                                             Width="176"
                                             Height="236"
@@ -443,7 +443,7 @@
 
                         <ContentControl Content="{Binding SelectedAlbumsViewAlbum}">
                             <ContentControl.ContentTemplate>
-                                <DataTemplate x:DataType="vm:MainWindowViewModel+AlbumBrowserItemViewModel">
+                                <DataTemplate x:DataType="vm:AlbumBrowserItemViewModel">
                                     <Border Background="{DynamicResource PanelBgAlt}"
                                             BorderBrush="{DynamicResource PanelBorder}"
                                             BorderThickness="1"

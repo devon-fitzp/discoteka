@@ -136,9 +136,9 @@ public partial class MainWindow : Window
     private void OnSortFormatsClick(object? sender, RoutedEventArgs e) => ViewModel?.CycleSortByFormats();
     private void OnSortPlaysClick(object? sender, RoutedEventArgs e) => ViewModel?.CycleSortByPlays();
 
-    private void OnDefaultSortTitleClick(object? sender, RoutedEventArgs e) => ViewModel?.SetDefaultSort(MainWindowViewModel.DefaultSortOption.Title);
-    private void OnDefaultSortArtistClick(object? sender, RoutedEventArgs e) => ViewModel?.SetDefaultSort(MainWindowViewModel.DefaultSortOption.Artist);
-    private void OnDefaultSortRecentlyAddedClick(object? sender, RoutedEventArgs e) => ViewModel?.SetDefaultSort(MainWindowViewModel.DefaultSortOption.RecentlyAdded);
+    private void OnDefaultSortTitleClick(object? sender, RoutedEventArgs e) => ViewModel?.SetDefaultSort(DefaultSortOption.Title);
+    private void OnDefaultSortArtistClick(object? sender, RoutedEventArgs e) => ViewModel?.SetDefaultSort(DefaultSortOption.Artist);
+    private void OnDefaultSortRecentlyAddedClick(object? sender, RoutedEventArgs e) => ViewModel?.SetDefaultSort(DefaultSortOption.RecentlyAdded);
     private void OnAllMusicViewClick(object? sender, RoutedEventArgs e) { ViewModel?.ShowAllMusicView(); UpdateActiveNavButton(); }
     private void OnArtistsViewClick(object? sender, RoutedEventArgs e) { ViewModel?.ShowArtistsView(); UpdateActiveNavButton(); }
     private void OnAlbumsViewClick(object? sender, RoutedEventArgs e) { ViewModel?.ShowAlbumsView(); UpdateActiveNavButton(); }
@@ -148,7 +148,7 @@ public partial class MainWindow : Window
 
     private async void OnArtistAlbumTileClick(object? sender, RoutedEventArgs e)
     {
-        if (ViewModel == null || sender is not Button { DataContext: MainWindowViewModel.AlbumGroupViewModel album })
+        if (ViewModel == null || sender is not Button { DataContext: AlbumGroupViewModel album })
         {
             return;
         }
@@ -163,10 +163,10 @@ public partial class MainWindow : Window
             return;
         }
 
-        MainWindowViewModel.AlbumGroupViewModel? album = button.DataContext switch
+        AlbumGroupViewModel? album = button.DataContext switch
         {
-            MainWindowViewModel.AlbumGroupViewModel selectedAlbum => selectedAlbum,
-            MainWindowViewModel.ArtistGroupViewModel artist => artist.SelectedAlbum,
+            AlbumGroupViewModel selectedAlbum => selectedAlbum,
+            ArtistGroupViewModel artist => artist.SelectedAlbum,
             _ => null
         };
 
@@ -184,7 +184,7 @@ public partial class MainWindow : Window
 
     private async void OnAlbumsGridAlbumClick(object? sender, RoutedEventArgs e)
     {
-        if (ViewModel == null || sender is not Button { DataContext: MainWindowViewModel.AlbumBrowserItemViewModel album })
+        if (ViewModel == null || sender is not Button { DataContext: AlbumBrowserItemViewModel album })
         {
             return;
         }
@@ -195,7 +195,7 @@ public partial class MainWindow : Window
     private async void OnAlbumsGridAlbumPlayClick(object? sender, RoutedEventArgs e)
     {
         e.Handled = true;
-        if (ViewModel == null || sender is not Button { DataContext: MainWindowViewModel.AlbumBrowserItemViewModel album })
+        if (ViewModel == null || sender is not Button { DataContext: AlbumBrowserItemViewModel album })
         {
             return;
         }
