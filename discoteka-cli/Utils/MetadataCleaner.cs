@@ -419,9 +419,7 @@ public static class MetadataCleaner
             return false;
         }
 
-        var hasContext = content.Contains("bpm", StringComparison.OrdinalIgnoreCase)
-                         || DjTagTokens.Any(tag => content.Contains(tag, StringComparison.OrdinalIgnoreCase))
-                         || MixTokens.Any(tag => content.Contains(tag, StringComparison.OrdinalIgnoreCase));
+        var hasContext = content.Contains("bpm", StringComparison.OrdinalIgnoreCase);
         if (!hasContext)
         {
             return false;
