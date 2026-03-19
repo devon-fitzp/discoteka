@@ -4,6 +4,8 @@
   
   *For use in a home-theater or hi-fi setup; full-screen interface with large text and simple UI elements to scroll with a remote or gamepad. Dynamic visuals while playing music to prevent screen burn.*
 
+- Keyboard Media Control support
+
 - Cross-Device Sync
 
   *Listening data sync, potential Wi-Fi LAN/VPN based music data transfer between PCs and mobile*
