@@ -15,10 +15,17 @@
 - More streaming data import
   - YouTube Music
   - Spotify
+  - Apple Music - Sign-In as XML alternative
 
 - Automatic music tag and album art search
 
   *Further automated cleanup of bad tag data*
+
+- More "smart playlists"
+  - Top listened albums
+  - Recommended downloads (top songs with no local file)
+  - On Repeat (most listened lately)
+  - Forgotten Favorites (lots of plays but not played recently)
 
 # Mobile
 
