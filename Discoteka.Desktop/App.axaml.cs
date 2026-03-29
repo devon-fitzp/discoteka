@@ -10,6 +10,7 @@ using Discoteka.Desktop.ViewModels;
 using Discoteka.Desktop.Views;
 using Discoteka.Core.Database;
 using Discoteka.Core.Jobs;
+using Discoteka.Core.Utils;
 using Discoteka.Desktop.Settings;
 
 namespace Discoteka.Desktop;
@@ -51,7 +52,10 @@ public partial class App : Application
                 _playbackService = null;
             }
             var importJobs = new LibraryImportJobs(_jobQueue);
-            var viewModel = new MainWindowViewModel(importJobs, _jobQueue, null, _playbackService);
+            var dynamicPlaylistRepo = new DynamicPlaylistRepository(dbPath);
+            var staticPlaylistService = new M3uPlaylistService(dbPath);
+            PlaylistSeedService.EnsureDefaultPlaylistsAsync(dynamicPlaylistRepo, dbPath).GetAwaiter().GetResult();
+            var viewModel = new MainWindowViewModel(importJobs, _jobQueue, null, _playbackService, dynamicPlaylistRepo, staticPlaylistService);
             Console.WriteLine("[Startup] Main window view model created.");
 
             // Avoid duplicate validations from both Avalonia and the CommunityToolkit. 

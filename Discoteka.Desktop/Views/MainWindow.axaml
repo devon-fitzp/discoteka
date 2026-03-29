@@ -149,12 +149,17 @@
 
                     <StackPanel Spacing="8">
                         <TextBlock Text="PLAYLISTS" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold"/>
-                        <StackPanel Spacing="4">
-                            <Button Classes="navItem" HorizontalAlignment="Stretch" Content="Road Trip Mix"/>
-                            <Button Classes="navItem" HorizontalAlignment="Stretch" Content="Workout Power"/>
-                            <Button Classes="navItem" HorizontalAlignment="Stretch" Content="Late Night Jams"/>
-                            <Button Classes="navItem" HorizontalAlignment="Stretch" Content="Guitar Legends"/>
-                        </StackPanel>
+                        <ItemsControl ItemsSource="{Binding Playlists.Playlists}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:PlaylistItemViewModel">
+                                    <Button Classes="navItem"
+                                            Classes.active="{Binding IsSelected}"
+                                            HorizontalAlignment="Stretch"
+                                            Content="{Binding Name}"
+                                            Click="OnPlaylistNavClick"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
                     </StackPanel>
                 </StackPanel>
             </ScrollViewer>
@@ -483,6 +488,48 @@
                     </StackPanel>
                 </ScrollViewer>
             </Border>
+
+            <!-- Playlist view -->
+            <Border Grid.Row="1" Grid.RowSpan="2" IsVisible="{Binding IsPlaylistView}" Margin="0,12,0,0">
+                <Grid RowDefinitions="Auto,*">
+                    <Border Grid.Row="0" Background="{DynamicResource PanelBg}" BorderBrush="{DynamicResource PanelBorder}" BorderThickness="0,1,0,1" Padding="10,8" Margin="0,0,0,0">
+                        <Grid ColumnDefinitions="2.6*,1.8*,2*,2*,*,1.5*,*,*">
+                            <TextBlock Text="TITLE" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Column="1" Text="REMIX" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Column="2" Text="ARTIST" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Column="3" Text="ALBUM" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Column="4" Text="TIME" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Column="5" Text="GENRE" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Column="6" Text="FORMAT" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Column="7" Text="PLAYS" Foreground="{DynamicResource TextMuted}" FontSize="11" FontWeight="SemiBold"/>
+                        </Grid>
+                    </Border>
+                    <ListBox x:Name="PlaylistTrackList" Grid.Row="1" Background="Transparent" BorderThickness="0" Margin="0,0,0,10"
+                             ItemsSource="{Binding PlaylistTracks}"
+                             DoubleTapped="OnPlaylistTrackListDoubleTapped">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:TrackRowViewModel">
+                                <Grid ColumnDefinitions="2.6*,1.8*,2*,2*,*,1.5*,*,*" Margin="0,6">
+                                    <Grid.ContextMenu>
+                                        <ContextMenu>
+                                            <MenuItem Header="Get Info" Click="OnTrackGetInfoClick" CommandParameter="{Binding}"/>
+                                        </ContextMenu>
+                                    </Grid.ContextMenu>
+                                    <TextBlock Text="{Binding Title}" Foreground="{DynamicResource TextPrimary}"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding Subtitle}" Foreground="{DynamicResource TextMuted}"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding Artist}" Foreground="{DynamicResource TextMuted}"/>
+                                    <TextBlock Grid.Column="3" Text="{Binding Album}" Foreground="{DynamicResource TextMuted}"/>
+                                    <TextBlock Grid.Column="4" Text="{Binding DurationText}" Foreground="{DynamicResource TextMuted}"/>
+                                    <TextBlock Grid.Column="5" Text="{Binding Genre}" Foreground="{DynamicResource TextMuted}"/>
+                                    <TextBlock Grid.Column="6" Text="{Binding Formats}" Foreground="{DynamicResource TextMuted}"/>
+                                    <TextBlock Grid.Column="7" Text="{Binding PlaysText}" Foreground="{DynamicResource TextMuted}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+
             </Grid>
         </Border>
 

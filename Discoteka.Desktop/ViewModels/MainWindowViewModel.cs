@@ -6,6 +6,7 @@ using Avalonia.Threading;
 using Discoteka.Desktop.Playback;
 using Discoteka.Core.Database;
 using Discoteka.Core.Jobs;
+using Discoteka.Core.Utils;
 
 namespace Discoteka.Desktop.ViewModels;
 
@@ -26,7 +27,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     private LibraryViewMode _libraryViewMode = LibraryViewMode.AllMusic;
 
     public MainWindowViewModel()
-        : this(new NoOpLibraryImportJobs(), null, null, null)
+        : this(new NoOpLibraryImportJobs(), null, null, null, null, null)
     {
     }
 
@@ -34,7 +35,9 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         ILibraryImportJobs importJobs,
         IBackgroundJobQueue? jobQueue,
         ITrackLibraryRepository? trackRepository,
-        IMediaPlaybackService? playbackService)
+        IMediaPlaybackService? playbackService,
+        IDynamicPlaylistRepository? dynamicPlaylistRepo = null,
+        M3uPlaylistService? staticPlaylistService = null)
     {
         _importJobs = importJobs;
         _jobQueue = jobQueue;
@@ -43,6 +46,11 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         Playback = new PlaybackViewModel(playbackService, Library);
         Artists = new ArtistsBrowserViewModel(Library, tracks => Playback.PlayTrackSequence(tracks));
         Albums = new AlbumsBrowserViewModel(Library, tracks => Playback.PlayTrackSequence(tracks));
+        Playlists = new PlaylistsBrowserViewModel(
+            Library,
+            dynamicPlaylistRepo ?? new DynamicPlaylistRepository(),
+            staticPlaylistService ?? new M3uPlaylistService(),
+            tracks => Playback.PlayTrackSequence(tracks));
 
         Library.TracksReloaded += OnTracksReloaded;
         Library.PropertyChanged += (_, e) => OnPropertyChanged(e.PropertyName);
@@ -60,6 +68,12 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
             if (e.PropertyName == nameof(AlbumsBrowserViewModel.AlbumGroups))
                 OnPropertyChanged(nameof(LibrarySubtitleText));
         };
+        Playlists.PropertyChanged += (_, e) =>
+        {
+            OnPropertyChanged(e.PropertyName);
+            if (e.PropertyName == nameof(PlaylistsBrowserViewModel.TrackCountText))
+                OnPropertyChanged(nameof(LibrarySubtitleText));
+        };
 
         if (_jobQueue != null)
         {
@@ -73,6 +87,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     public PlaybackViewModel Playback { get; }
     public ArtistsBrowserViewModel Artists { get; }
     public AlbumsBrowserViewModel Albums { get; }
+    public PlaylistsBrowserViewModel Playlists { get; }
 
     // ── Pass-through properties (XAML binds here) ──────────────────────────────
 
@@ -126,20 +141,26 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     public bool IsAllMusicView => _libraryViewMode == LibraryViewMode.AllMusic;
     public bool IsArtistsView => _libraryViewMode == LibraryViewMode.Artists;
     public bool IsAlbumsView => _libraryViewMode == LibraryViewMode.Albums;
+    public bool IsPlaylistView => _libraryViewMode == LibraryViewMode.Playlist;
+
+    // Playlist pass-throughs
+    public BulkObservableCollection<TrackRowViewModel> PlaylistTracks => Playlists.PlaylistTracks;
+
     public string LibraryViewTitle => _libraryViewMode switch
     {
         LibraryViewMode.Artists => "Artists",
         LibraryViewMode.Albums => "Albums",
+        LibraryViewMode.Playlist => Playlists.SelectedPlaylist?.Name ?? "Playlist",
         _ => "All Music"
     };
-    public string LibrarySubtitleText => IsAllMusicView
-        ? Library.TrackCountText
-        : _libraryViewMode switch
-        {
-            LibraryViewMode.Artists => Artists.ArtistGroups.Count == 1 ? "1 artist" : $"{Artists.ArtistGroups.Count} artists",
-            LibraryViewMode.Albums => Albums.AlbumGroups.Count == 1 ? "1 album" : $"{Albums.AlbumGroups.Count} albums",
-            _ => string.Empty
-        };
+    public string LibrarySubtitleText => _libraryViewMode switch
+    {
+        LibraryViewMode.AllMusic => Library.TrackCountText,
+        LibraryViewMode.Artists => Artists.ArtistGroups.Count == 1 ? "1 artist" : $"{Artists.ArtistGroups.Count} artists",
+        LibraryViewMode.Albums => Albums.AlbumGroups.Count == 1 ? "1 album" : $"{Albums.AlbumGroups.Count} albums",
+        LibraryViewMode.Playlist => Playlists.TrackCountText,
+        _ => string.Empty
+    };
 
     // ── Initialisation ─────────────────────────────────────────────────────────
 
@@ -147,6 +168,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     {
         SetStatusWithDecay("Loading library...");
         await Library.LoadTracksAsync();
+        RunFireAndForget(Playlists.LoadAsync(), "Playlists.LoadAsync");
     }
 
     // ── Import / job queue ─────────────────────────────────────────────────────
@@ -196,6 +218,15 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
     public void ShowAllMusicView() => SetLibraryViewMode(LibraryViewMode.AllMusic);
     public void ShowArtistsView() => SetLibraryViewMode(LibraryViewMode.Artists);
     public void ShowAlbumsView() => SetLibraryViewMode(LibraryViewMode.Albums);
+
+    public void ShowPlaylistView(PlaylistItemViewModel playlist)
+    {
+        SetLibraryViewMode(LibraryViewMode.Playlist);
+        RunFireAndForget(Playlists.SelectPlaylistAsync(playlist), "Playlists.SelectPlaylistAsync");
+    }
+
+    public Task<(bool Started, string? UserError)> PlayPlaylistAsync(PlaylistItemViewModel playlist)
+        => Playlists.PlayPlaylistAsync(playlist);
 
     public void ClearSmartFilter()
     {
@@ -271,6 +302,10 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         {
             RunFireAndForget(Albums.LoadAsync(), "Albums.LoadAsync");
         }
+        else if (IsPlaylistView && Playlists.SelectedPlaylist != null)
+        {
+            RunFireAndForget(Playlists.SelectPlaylistAsync(Playlists.SelectedPlaylist), "Playlists.SelectPlaylistAsync");
+        }
 
         OnPropertyChanged(nameof(LibrarySubtitleText));
         UpdateStatusFromPending("Library loaded.");
@@ -317,6 +352,7 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(IsAllMusicView));
         OnPropertyChanged(nameof(IsArtistsView));
         OnPropertyChanged(nameof(IsAlbumsView));
+        OnPropertyChanged(nameof(IsPlaylistView));
         OnPropertyChanged(nameof(LibraryViewTitle));
         OnPropertyChanged(nameof(LibrarySubtitleText));
         UpdateStatusFromPending($"{LibraryViewTitle} view selected.");
@@ -324,17 +360,26 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         if (mode == LibraryViewMode.Artists)
         {
             Albums.Clear();
+            Playlists.Clear();
             RunFireAndForget(Artists.LoadAsync(), "Artists.LoadAsync");
         }
         else if (mode == LibraryViewMode.Albums)
         {
             Artists.Clear();
+            Playlists.Clear();
             RunFireAndForget(Albums.LoadAsync(), "Albums.LoadAsync");
+        }
+        else if (mode == LibraryViewMode.Playlist)
+        {
+            Artists.Clear();
+            Albums.Clear();
+            // Track loading is driven by ShowPlaylistView / SelectPlaylistAsync
         }
         else
         {
             Artists.Clear();
             Albums.Clear();
+            Playlists.Clear();
         }
     }
 

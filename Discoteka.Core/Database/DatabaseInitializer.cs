@@ -209,7 +209,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS IX_TrackLibrary_TrackId ON TrackLibrary(TrackI
 CREATE UNIQUE INDEX IF NOT EXISTS IX_AppleLibrary_AppleMusicId ON AppleLibrary(AppleMusicId);
 CREATE UNIQUE INDEX IF NOT EXISTS IX_Rekordbox_TrackId ON Rekordbox(TrackId);
 CREATE UNIQUE INDEX IF NOT EXISTS IX_FileLibrary_FileId ON FileLibrary(FileId);
-CREATE INDEX IF NOT EXISTS IX_RecentActivity_TrackId_PlayedAtUtc ON RecentActivity(TrackId, PlayedAtUtc DESC);";
+CREATE INDEX IF NOT EXISTS IX_RecentActivity_TrackId_PlayedAtUtc ON RecentActivity(TrackId, PlayedAtUtc DESC);
+
+CREATE TABLE IF NOT EXISTS DynamicPlaylists (
+    Id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    Name      TEXT    NOT NULL,
+    RuleField TEXT    NOT NULL,
+    Operator  TEXT    NOT NULL,
+    ValueA    INTEGER NOT NULL,
+    ValueB    INTEGER
+);";
         command.ExecuteNonQuery();
 
         command.CommandText = "SELECT COUNT(1) FROM discotekaMeta;";

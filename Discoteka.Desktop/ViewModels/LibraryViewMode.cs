@@ -4,5 +4,6 @@ public enum LibraryViewMode
 {
     AllMusic,
     Artists,
-    Albums
+    Albums,
+    Playlist
 }

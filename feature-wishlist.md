@@ -29,6 +29,10 @@
   - On Repeat (most listened lately)
   - Forgotten Favorites (lots of plays but not played recently)
 
+- Right click track options:
+  - "Go To Artist" and "Go To Album" options
+  - "Play Next" or "Add to Queue" function 
+
 # Mobile
 
 - App, period

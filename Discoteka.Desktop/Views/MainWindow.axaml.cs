@@ -133,6 +133,34 @@ public partial class MainWindow : Window
         NavAllMusic.Classes.Set("active", ViewModel?.IsAllMusicView ?? true);
         NavArtists.Classes.Set("active", ViewModel?.IsArtistsView ?? false);
         NavAlbums.Classes.Set("active", ViewModel?.IsAlbumsView ?? false);
+        // Playlist buttons manage their own IsSelected state via PlaylistItemViewModel.IsSelected
+    }
+
+    private async void OnPlaylistNavClick(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel == null || sender is not Button { DataContext: PlaylistItemViewModel playlist })
+        {
+            return;
+        }
+
+        ViewModel.ShowPlaylistView(playlist);
+        NavAllMusic.Classes.Set("active", false);
+        NavArtists.Classes.Set("active", false);
+        NavAlbums.Classes.Set("active", false);
+    }
+
+    private void OnPlaylistTrackListDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (ViewModel == null || sender is not ListBox listBox)
+        {
+            return;
+        }
+
+        var result = ViewModel.Playlists.PlayFromIndex(listBox.SelectedIndex);
+        if (!result.Started && result.UserError == "No local file!")
+        {
+            ViewModel.PostStatus("No local file!");
+        }
     }
 
     private void OnSortTitleClick(object? sender, RoutedEventArgs e) => ViewModel?.CycleSortByTitle();
