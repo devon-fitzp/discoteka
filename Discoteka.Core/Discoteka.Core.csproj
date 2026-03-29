@@ -9,6 +9,7 @@
         <Nullable>enable</Nullable>
         <PublishAot>false</PublishAot>
         <InvariantGlobalization>true</InvariantGlobalization>
+        <Version>0.5.0</Version>
     </PropertyGroup>
 
     <ItemGroup>
