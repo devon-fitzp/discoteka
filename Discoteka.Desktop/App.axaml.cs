@@ -10,6 +10,7 @@ using Discoteka.Desktop.ViewModels;
 using Discoteka.Desktop.Views;
 using Discoteka.Core.Database;
 using Discoteka.Core.Jobs;
+using Discoteka.Desktop.Settings;
 
 namespace Discoteka.Desktop;
 
@@ -28,6 +29,8 @@ public partial class App : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             Console.WriteLine("[Startup] Initializing application...");
+            var settings = AppSettingsService.Load();
+            Console.WriteLine($"[Startup] Settings loaded (ShuffleHistorySize={settings.ShuffleHistorySize}).");
             var dbPath = DatabaseInitializer.Initialize();
             Console.WriteLine($"[Startup] Database path: {dbPath}");
             _jobQueue = new BackgroundJobQueue();
@@ -35,6 +38,7 @@ public partial class App : Application
             try
             {
                 _playbackService = new MediaPlaybackService();
+                _playbackService.SetShuffleHistorySize(settings.ShuffleHistorySize);
                 Console.WriteLine("[Startup] Media playback service initialized.");
             }
             catch (Exception ex)

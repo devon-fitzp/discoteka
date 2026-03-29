@@ -185,7 +185,7 @@ public partial class MainWindow : Window
         var result = await ViewModel.PlayArtistAlbumAsync(album);
         if (!result.Started && result.UserError == "No local file!")
         {
-            await ShowSimpleMessageAsync("No local file!");
+            ViewModel.PostStatus("No local file!");
         }
     }
 
@@ -210,7 +210,7 @@ public partial class MainWindow : Window
         var result = await ViewModel.PlayAlbumsViewAlbumAsync(album);
         if (!result.Started && result.UserError == "No local file!")
         {
-            await ShowSimpleMessageAsync("No local file!");
+            ViewModel.PostStatus("No local file!");
         }
     }
 
@@ -219,7 +219,7 @@ public partial class MainWindow : Window
         ViewModel?.LoadMoreAlbumsViewPage();
     }
 
-    private async void OnTrackListDoubleTapped(object? sender, TappedEventArgs e)
+    private void OnTrackListDoubleTapped(object? sender, TappedEventArgs e)
     {
         if (ViewModel == null || sender is not ListBox listBox)
         {
@@ -228,7 +228,7 @@ public partial class MainWindow : Window
 
         if (!ViewModel.PlayTrackFromVisibleIndex(listBox.SelectedIndex, out var userError) && userError == "No local file!")
         {
-            await ShowSimpleMessageAsync("No local file!");
+            ViewModel.PostStatus("No local file!");
         }
     }
 
@@ -263,7 +263,7 @@ public partial class MainWindow : Window
         await ViewModel.InitializeAsync();
     }
 
-    private async void OnPlayPauseClick(object? sender, RoutedEventArgs e)
+    private void OnPlayPauseClick(object? sender, RoutedEventArgs e)
     {
         if (ViewModel == null)
         {
@@ -273,7 +273,7 @@ public partial class MainWindow : Window
         var selectedIndex = this.FindControl<ListBox>("TrackList")?.SelectedIndex ?? 0;
         if (!ViewModel.TogglePlayPause(selectedIndex, out var userError) && userError == "No local file!")
         {
-            await ShowSimpleMessageAsync("No local file!");
+            ViewModel.PostStatus("No local file!");
         }
     }
 

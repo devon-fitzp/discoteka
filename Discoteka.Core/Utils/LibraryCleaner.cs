@@ -103,7 +103,7 @@ WHERE rowid = $rowId;";
             var existingConfidence = reader.IsDBNull(9) ? (double?)null : reader.GetDouble(9);
             var existingLog = reader.IsDBNull(10) ? null : reader.GetString(10);
 
-            var result = MetadataCleaner.Clean(title ?? titleRaw, artist ?? artistRaw);
+            var result = MetadataCleaner.Clean(titleRaw ?? title, artistRaw ?? artist);
             var finalKey = existingKey ?? result.MusicalKey;
             var finalBpm = existingBpm ?? result.Bpm;
 

@@ -23,6 +23,7 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
     private readonly LibVLC _libVlc;
     private readonly MediaPlayer _mediaPlayer;
     private readonly List<PlaybackTrack> _queue = new();
+    private readonly List<int> _shuffleHistory = new();
     private readonly Random _random = new();
 
     private Media? _currentMedia;
@@ -31,6 +32,10 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
     private bool _disposed;
     private bool _shuffleEnabled;
     private RepeatMode _repeatMode = RepeatMode.Off;
+    // _shuffleHistoryCursor points at the "current" entry in _shuffleHistory, or -1 if history is empty.
+    // _shuffleHistorySize is the number of steps back the user can navigate (default 5).
+    private int _shuffleHistoryCursor = -1;
+    private int _shuffleHistorySize = 5;
 
     public MediaPlaybackService()
     {
@@ -103,6 +108,9 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
         _currentQueueIndex = _queue.Count == 0
             ? -1
             : Math.Clamp(startIndex, 0, _queue.Count - 1);
+
+        _shuffleHistory.Clear();
+        _shuffleHistoryCursor = -1;
 
         Console.WriteLine($"[PlaybackSvc] SetQueue count={_queue.Count}, requestedStart={startIndex}, actualStart={_currentQueueIndex}");
         if (_queue.Count > 0)
@@ -184,10 +192,21 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
 
         if (_shuffleEnabled && _queue.Count > 1)
         {
+            // If the user previously pressed Previous and is now going forward through history,
+            // replay the next entry rather than picking a new random track.
+            if (_shuffleHistoryCursor >= 0 && _shuffleHistoryCursor < _shuffleHistory.Count - 1)
+            {
+                _shuffleHistoryCursor++;
+                var histIdx = _shuffleHistory[_shuffleHistoryCursor];
+                Console.WriteLine($"[PlaybackSvc] PlayNext shuffle replaying history forward cursor={_shuffleHistoryCursor}, index={histIdx}");
+                return PlayAtIndex(histIdx);
+            }
+
             var shuffleIndex = ShuffleChooseNextTrack(_currentQueueIndex, _queue.Count);
             Console.WriteLine($"[PlaybackSvc] PlayNext shuffle chose index={shuffleIndex}");
             if (shuffleIndex >= 0 && shuffleIndex < _queue.Count)
             {
+                PushShuffleHistory(shuffleIndex);
                 return PlayAtIndex(shuffleIndex);
             }
         }
@@ -214,10 +233,25 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
     public bool PlayPrevious()
     {
         ThrowIfDisposed();
-        Console.WriteLine($"[PlaybackSvc] PlayPrevious (queueCount={_queue.Count}, currentIdx={_currentQueueIndex}, repeat={_repeatMode})");
+        Console.WriteLine($"[PlaybackSvc] PlayPrevious (queueCount={_queue.Count}, currentIdx={_currentQueueIndex}, shuffle={_shuffleEnabled}, repeat={_repeatMode})");
 
         if (_queue.Count == 0)
         {
+            return false;
+        }
+
+        // In shuffle mode, navigate backward through the recent-play history.
+        if (_shuffleEnabled)
+        {
+            if (_shuffleHistoryCursor > 0)
+            {
+                _shuffleHistoryCursor--;
+                var histIdx = _shuffleHistory[_shuffleHistoryCursor];
+                Console.WriteLine($"[PlaybackSvc] PlayPrevious shuffle stepping back cursor={_shuffleHistoryCursor}, index={histIdx}");
+                return PlayAtIndex(histIdx);
+            }
+
+            Console.WriteLine("[PlaybackSvc] PlayPrevious shuffle at start of history, cannot go further back");
             return false;
         }
 
@@ -294,8 +328,24 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
         ThrowIfDisposed();
 
         _shuffleEnabled = enabled;
+        if (!enabled)
+        {
+            _shuffleHistory.Clear();
+            _shuffleHistoryCursor = -1;
+        }
         Console.WriteLine($"[PlaybackSvc] SetShuffle {_shuffleEnabled}");
         EmitState();
+    }
+
+    public void SetShuffleHistorySize(int size)
+    {
+        ThrowIfDisposed();
+
+        _shuffleHistorySize = Math.Max(1, size);
+        Console.WriteLine($"[PlaybackSvc] SetShuffleHistorySize {_shuffleHistorySize}");
+
+        // Trim existing history if it now exceeds the new limit.
+        TrimShuffleHistory();
     }
 
     public void SetRepeatMode(RepeatMode repeatMode)
@@ -352,6 +402,51 @@ public sealed class MediaPlaybackService : IMediaPlaybackService
         }
 
         return candidates[_random.Next(candidates.Length)];
+    }
+
+    /// <summary>
+    /// Appends <paramref name="nextQueueIndex"/> to the shuffle history, seeding the current
+    /// track first if the history is empty, then trims old entries to stay within the configured size.
+    /// </summary>
+    private void PushShuffleHistory(int nextQueueIndex)
+    {
+        // Discard any "future" entries if the user had gone back and is now branching off.
+        if (_shuffleHistoryCursor >= 0 && _shuffleHistoryCursor < _shuffleHistory.Count - 1)
+        {
+            _shuffleHistory.RemoveRange(_shuffleHistoryCursor + 1, _shuffleHistory.Count - _shuffleHistoryCursor - 1);
+        }
+
+        // Seed history with the current track so the user can step back to it.
+        if (_shuffleHistory.Count == 0 && _currentQueueIndex >= 0)
+        {
+            _shuffleHistory.Add(_currentQueueIndex);
+        }
+
+        _shuffleHistory.Add(nextQueueIndex);
+        TrimShuffleHistory();
+        _shuffleHistoryCursor = _shuffleHistory.Count - 1;
+    }
+
+    /// <summary>
+    /// Removes oldest entries from the front of <see cref="_shuffleHistory"/> until it is at most
+    /// <c>_shuffleHistorySize + 1</c> entries long (current + N previous).
+    /// </summary>
+    private void TrimShuffleHistory()
+    {
+        var limit = _shuffleHistorySize + 1;
+        while (_shuffleHistory.Count > limit)
+        {
+            _shuffleHistory.RemoveAt(0);
+            if (_shuffleHistoryCursor > 0)
+            {
+                _shuffleHistoryCursor--;
+            }
+        }
+
+        if (_shuffleHistory.Count == 0)
+        {
+            _shuffleHistoryCursor = -1;
+        }
     }
 
     private void DisposeCurrentMedia()

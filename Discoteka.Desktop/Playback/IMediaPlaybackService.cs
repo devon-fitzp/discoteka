@@ -88,4 +88,10 @@ public interface IMediaPlaybackService : IDisposable
 
     /// <summary>Sets the repeat mode (Off, Track, or Playlist).</summary>
     void SetRepeatMode(RepeatMode repeatMode);
+
+    /// <summary>
+    /// Sets how many steps back the user can navigate with <see cref="PlayPrevious"/> while shuffle is on.
+    /// Defaults to 5. Must be at least 1.
+    /// </summary>
+    void SetShuffleHistorySize(int size);
 }

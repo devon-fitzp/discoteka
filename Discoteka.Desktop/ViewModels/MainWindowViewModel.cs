@@ -359,6 +359,12 @@ public partial class MainWindowViewModel : ViewModelBase, IDisposable
         Albums.InvalidateCache();
     }
 
+    /// <summary>
+    /// Shows <paramref name="message"/> in the status bar with the standard auto-decay.
+    /// Safe to call from any thread.
+    /// </summary>
+    public void PostStatus(string message) => UpdateStatusFromPending(message);
+
     private void UpdateStatusFromPending(string message)
     {
         var pending = Math.Max(0, Interlocked.CompareExchange(ref _pendingJobs, 0, 0));

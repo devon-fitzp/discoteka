@@ -207,7 +207,10 @@ public sealed class PlaybackViewModel : ViewModelBase, IDisposable
     {
         if (_service == null) return;
         Console.WriteLine("[PlaybackVM] PlayPrevious requested by UI");
-        TryPlayDirection(skipMissingFiles: true, forward: false);
+        if (!TryPlayDirection(skipMissingFiles: true, forward: false) && _shuffleEnabled)
+        {
+            Dispatcher.UIThread.Post(() => StatusRequested?.Invoke("Reached the start of shuffle history."));
+        }
     }
 
     public void SeekToSeconds(double seconds)

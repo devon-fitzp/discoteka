@@ -41,28 +41,6 @@ public static class MetadataCleaner
         "quick hit"
     };
 
-    private static readonly string[] MixTokens =
-    {
-        "remix",
-        "edit",
-        "vip",
-        "flip",
-        "bootleg",
-        "version",
-        "mix"
-    };
-
-    private static readonly string[] VersionSuffixes =
-    {
-        "original mix",
-        "extended mix",
-        "club mix",
-        "radio edit",
-        "original edit",
-        "extended edit",
-        "club edit"
-    };
-
     private static readonly string[] JunkSuffixTokens =
     {
         "lyrics",
@@ -463,17 +441,6 @@ public static class MetadataCleaner
             }
         }
 
-        foreach (var suffix in VersionSuffixes)
-        {
-            if (updated.EndsWith($" {suffix}", StringComparison.OrdinalIgnoreCase))
-            {
-                djTags.Add(suffix);
-                log.Add("mix_suffix");
-                updated = updated[..^($" {suffix}".Length)].Trim();
-                break;
-            }
-        }
-
         return updated;
     }
 
@@ -498,8 +465,7 @@ public static class MetadataCleaner
 
     private static bool ContainsMixTokens(string value)
     {
-        return MixTokens.Any(token => value.Contains(token, StringComparison.OrdinalIgnoreCase))
-               || DjTagTokens.Any(token => value.Contains(token, StringComparison.OrdinalIgnoreCase));
+        return DjTagTokens.Any(token => value.Contains(token, StringComparison.OrdinalIgnoreCase));
     }
 
     private static void ExtractFeatures(string rawNames, List<string> features, List<string> log, string logTag)

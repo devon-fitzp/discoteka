@@ -115,6 +115,7 @@ public static class MatchEngine
         allMatches.AddRange(Match(appleRows, rekordboxRows, pathHint: false));
         allMatches.AddRange(Match(appleRows, fileRows, pathHint: false));
         allMatches.AddRange(Match(rekordboxRows, fileRows, pathHint: true));
+        allMatches.AddRange(Match(fileRows, fileRows, pathHint: false, skipSelf: true));
 
         var autoLinks = allMatches
             .Where(c => c.Score >= minAutoScore && MeetsMinimums(c))
@@ -181,7 +182,7 @@ public static class MatchEngine
         return candidate.TitleScore >= 0.65 && candidate.DurationScore >= 0.85;
     }
 
-    private static List<MatchCandidate> Match(List<MatchRow> source, List<MatchRow> target, bool pathHint)
+    private static List<MatchCandidate> Match(List<MatchRow> source, List<MatchRow> target, bool pathHint, bool skipSelf = false)
     {
         var index = BuildIndex(target);
         var results = new List<MatchCandidate>();
@@ -230,6 +231,11 @@ public static class MatchEngine
 
             foreach (var candidate in candidates)
             {
+                if (skipSelf && candidate.Id == row.Id)
+                {
+                    continue;
+                }
+
                 var match = Score(row, candidate, pathHint);
                 if (match.Score >= 0.80)
                 {
