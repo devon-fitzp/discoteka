@@ -31,7 +31,13 @@
 
 - Right click track options:
   - "Go To Artist" and "Go To Album" options
-  - "Play Next" or "Add to Queue" function 
+  - "Play Next" or "Add to Queue" function
+ 
+- Queue Functionality
+  - "Start Queue" or "Add To Queue" by right-clicking tracks
+  - Sidebar pane - quickly open and close to see queue, drag tracks into it, and even save it as a playlist
+  - When queue started, if already in some previous play queue (like an album, playlist, library, etc.) save point and return to it after queue finishes
+  - 
 
 # Mobile
 
